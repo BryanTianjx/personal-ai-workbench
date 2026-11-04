@@ -24,6 +24,7 @@ Windows/macOS 桌面应用；Workspace、Project、Task；Dashboard、搜索和�
 增加多 Agent 协作、任务委派、可视化工作流和更完整的执行治理。
 
 ## 里程碑门禁
+
 - Gate E0：PRD、需求追踪、架构和验收基线通过评审。
 - Gate E1：双平台工程骨架可构建，基础通信和数据库初始化通过。
 - Gate E2：本地业务闭环和离线场景通过。

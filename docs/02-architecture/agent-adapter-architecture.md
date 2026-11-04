@@ -1,14 +1,15 @@
 # Agent Adapter Architecture
 
-**Architecture Baseline:** E0.2 Candidate  
-**Decision Status:** Accepted boundary; authorization rules in agent-authorization-model.md  
-**Implementation Status:** Not Implemented  
+**Architecture Baseline:** E0.2 Candidate
+**Decision Status:** Accepted boundary; authorization rules in agent-authorization-model.md
+**Implementation Status:** Not Implemented
 **Verification Status:** Not Verified
 
 ## 1. Purpose and boundary
 The Agent subsystem coordinates workbench-owned Agent Executions. Provider adapters translate a stable contract into supported, documented Hermes, Codex, Cursor, or other interfaces. Core logic does not depend on private provider databases, undocumented APIs, or assumptions about provider persistence.
 
 Agent Adapter and Workflow Engine are separate:
+
 - Adapter: connectivity, capability discovery, submission, status, cancellation, result normalization.
 - Workflow Engine: workbench-owned sequencing, dependencies, approvals orchestration, retries, and Workflow Run history.
 - Authorization service: centralized policy decision and approval validation; neither Adapter nor Workflow Engine may bypass it.

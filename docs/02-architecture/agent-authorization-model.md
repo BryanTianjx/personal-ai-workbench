@@ -1,8 +1,8 @@
 # Agent Authorization Model
 
-**Architecture Baseline:** E0.2 Candidate  
-**Policy:** Default deny; least privilege; explicit scope  
-**Implementation Status:** Not Implemented  
+**Architecture Baseline:** E0.2 Candidate
+**Policy:** Default deny; least privilege; explicit scope
+**Implementation Status:** Not Implemented
 **Verification Status:** Not Verified
 
 ## 1. Purpose

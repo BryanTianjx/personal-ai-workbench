@@ -1,0 +1,32 @@
+name: Documentation Validation
+
+on:
+  push:
+    branches:
+      - docs/product-baseline
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "**/*.md"
+      - "README.md"
+      - "scripts/validate-docs.py"
+      - ".github/workflows/docs-validation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-docs:
+    name: Validate documentation baseline
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run documentation validator
+        run: python3 scripts/validate-docs.py

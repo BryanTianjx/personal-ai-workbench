@@ -1,14 +1,15 @@
 # Platform Architecture
 
-**Architecture Baseline:** E0.2 Candidate  
-**Decision Status:** Accepted platform strategy  
-**Implementation Status:** Not Implemented  
+**Architecture Baseline:** E0.2 Candidate
+**Decision Status:** Accepted platform strategy
+**Implementation Status:** Not Implemented
 **Verification Status:** Not Verified
 
 ## 1. Supported targets
 Windows and macOS are first-class targets. Each requires native build, install, launch, offline, backup/restore, and upgrade verification. Compilation alone is not acceptance.
 
 ## 2. Technology responsibilities
+
 - Tauri 2: desktop shell, lifecycle, controlled IPC, packaging integration.
 - React + TypeScript: presentation and client interaction.
 - Rust: application/domain execution, persistence, policy, adapters, platform abstractions.

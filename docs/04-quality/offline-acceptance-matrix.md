@@ -1,7 +1,7 @@
 # Windows / macOS Offline Acceptance Matrix
 
-**Baseline:** E0.2 Candidate  
-**Status:** Test specification; not executed  
+**Baseline:** E0.2 Candidate
+**Status:** Test specification; not executed
 **Verification Status:** Not Verified
 
 ## 1. Evidence record
@@ -30,6 +30,7 @@ For every test record: test ID, OS version/build, CPU architecture, app version/
 | OFF-017 | Platform trust | Installer/signature and OS trust behavior validated | Windows signing/SmartScreen policy | macOS signing, notarization, Gatekeeper, first launch |
 
 ## 3. Platform-specific checks
+
 - Windows: supported Windows release, native installer, known-folder paths, Credential Manager/DPAPI integration, drive and UNC path handling, symlink/reparse-point behavior, upgrade and uninstall.
 - macOS: actual macOS environment, supported architecture(s), signed/notarized package, Gatekeeper and first-launch prompts, Application Support/Logs/Caches paths, Keychain, sandbox/permissions, symlink behavior, upgrade and uninstall.
 

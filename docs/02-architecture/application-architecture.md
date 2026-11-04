@@ -1,14 +1,15 @@
 # Application Architecture
 
-**Architecture Baseline:** E0.2 Candidate  
-**Decision Status:** Accepted design rules; individual ADR status is authoritative  
-**Implementation Status:** Not Implemented  
+**Architecture Baseline:** E0.2 Candidate
+**Decision Status:** Accepted design rules; individual ADR status is authoritative
+**Implementation Status:** Not Implemented
 **Verification Status:** Not Verified
 
 ## 1. Purpose
 The application layer translates user intent into validated, authorized, transactional behavior. It is the boundary between presentation and domain/infrastructure.
 
 ## 2. Layers and dependency rules
+
 1. Presentation: React views and Tauri commands/events; rendering and input collection only.
 2. Application: use cases, DTOs, validation, context resolution, authorization, transaction coordination, queries, and result mapping.
 3. Domain: entities, value objects, invariants, domain services, and events; no UI, SQL, OS, or vendor dependencies.
@@ -34,10 +35,12 @@ Dashboard is a composition Read Model, not a domain module or source of truth. I
 Each module owns writes to its authoritative records. A cross-module use case is coordinated by an application-level orchestrator and documents participating module contracts and invariants. No module writes another module's tables. For the single-database topology, a short local transaction may span repositories only when coordinated by that use case; external network calls are outside the transaction. Failure rolls back local state or records an explicit recoverable state. Reliable downstream work uses an outbox-style record committed with the local change; delivery is at-least-once and consumers are idempotent.
 
 ## 6. Distinct execution concepts
+
 - Task: business work item and its user-facing status.
 - Workflow Run: one workbench-defined orchestration instance, owned by Automation.
 - Agent Execution: one provider execution attempt, owned by AI/Agent.
 - Audit Event: immutable-by-module record of a decision or operation, owned by System & Security.
+
 These are related by IDs/correlation IDs, not collapsed into one state machine. Workflow Run may create Agent Executions; Task status changes only through Task use cases.
 
 ## 7. Errors and long-running work

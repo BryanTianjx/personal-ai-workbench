@@ -1,9 +1,9 @@
 # System Architecture
 
-**Architecture Baseline:** E0.2 Candidate  
-**Decision Status:** Accepted design baseline — see ADR-002 through ADR-006  
-**Implementation Status:** Not Implemented  
-**Verification Status:** Not Verified  
+**Architecture Baseline:** E0.2 Candidate
+**Decision Status:** Accepted design baseline — see ADR-002 through ADR-006
+**Implementation Status:** Not Implemented
+**Verification Status:** Not Verified
 **Applies to:** Alpha 0.1 through V1.0
 
 ## 1. Architectural objectives

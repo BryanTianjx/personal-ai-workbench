@@ -1,8 +1,8 @@
 # Security Architecture
 
-**Architecture Baseline:** E0.2 Candidate  
-**Decision Status:** Accepted security principles; detailed policy in agent-authorization-model.md  
-**Implementation Status:** Not Implemented  
+**Architecture Baseline:** E0.2 Candidate
+**Decision Status:** Accepted security principles; detailed policy in agent-authorization-model.md
+**Implementation Status:** Not Implemented
 **Verification Status:** Not Verified
 
 ## 1. Objectives and threat model

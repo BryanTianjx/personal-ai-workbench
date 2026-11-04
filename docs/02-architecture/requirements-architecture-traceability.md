@@ -1,7 +1,7 @@
 # Requirements-to-Architecture Traceability
 
-**Architecture Baseline:** E0.2 Candidate  
-**Implementation Status:** Not Implemented  
+**Architecture Baseline:** E0.2 Candidate
+**Implementation Status:** Not Implemented
 **Verification Status:** Not Verified
 
 This matrix links the product requirements baseline to architecture ownership and acceptance evidence. Requirement status remains governed by `docs/01-product/requirements-baseline.md`; this document does not imply implementation.
@@ -35,6 +35,7 @@ This matrix links the product requirements baseline to architecture ownership an
 | PAW-AU-001 | PRD 3.7 | Automation | Workflow definition/run records | Trigger authorization and run lifecycle tests |
 
 ## Traceability rules
+
 1. Every requirement must map to an architecture owner, implementation boundary, and acceptance evidence before implementation starts.
 2. Tests must assert observable behavior and preserve evidence (logs/screenshots/reports) without secrets.
 3. Use statuses proposed, approved, implemented, verified, deferred, rejected from the requirements baseline. Only a passing test with retained evidence may set verified.

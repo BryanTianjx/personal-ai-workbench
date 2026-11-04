@@ -1,8 +1,8 @@
 # Data Architecture
 
-**Architecture Baseline:** E0.2 Candidate  
-**Decision Status:** Accepted — see ADR-003 and ADR-006  
-**Implementation Status:** Not Implemented  
+**Architecture Baseline:** E0.2 Candidate
+**Decision Status:** Accepted — see ADR-003 and ADR-006
+**Implementation Status:** Not Implemented
 **Verification Status:** Not Verified
 
 ## 1. Ownership

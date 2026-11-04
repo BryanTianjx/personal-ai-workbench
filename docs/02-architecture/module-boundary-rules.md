@@ -1,7 +1,7 @@
 # Module Boundary Rules
 
-**Architecture Baseline:** E0.2 Candidate  
-**Implementation Status:** Not Implemented  
+**Architecture Baseline:** E0.2 Candidate
+**Implementation Status:** Not Implemented
 **Verification Status:** Not Verified
 
 ## 1. Ownership
@@ -11,6 +11,7 @@ Each domain module owns its entities, invariants, application commands, reposito
 Presentation → Application → Domain. Infrastructure implements ports owned inward. Modules may depend on shared kernel types and published contracts, not each other's internals. Cycles are prohibited. Cross-module orchestration belongs in an application use case or Workflow Engine, not in a domain entity.
 
 ## 3. Read and write rules
+
 - Commands go through the owning module's application service.
 - Cross-module reads use query contracts/read models.
 - Dashboard is a composed read model; it is not authoritative.
@@ -22,10 +23,12 @@ Presentation → Application → Domain. Infrastructure implements ports owned i
 A use case owns its local SQLite transaction. A coordinated cross-module transaction is permitted only when one application orchestrator documents all participants, invariants, and rollback behavior. Never hold a database transaction open across a network/provider call. Use outbox-style persistence for reliable asynchronous follow-up; assume at-least-once delivery and require idempotent consumers.
 
 ## 5. Execution object separation
+
 - Task: user-facing business work and lifecycle.
 - Workflow Run: orchestration instance owned by Automation.
 - Agent Execution: provider invocation/attempt owned by AI/Agent.
 - Audit Event: decision/operation evidence owned by System & Security.
+
 Use IDs and correlation IDs to relate them. Do not reuse a single state machine or let Automation mutate Agent Execution internals.
 
 ## 6. Failure and events

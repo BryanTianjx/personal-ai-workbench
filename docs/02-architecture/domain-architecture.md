@@ -1,8 +1,8 @@
 # Domain Architecture
 
-**Architecture Baseline:** E0.2 Candidate  
-**Decision Status:** Accepted design rules  
-**Implementation Status:** Not Implemented  
+**Architecture Baseline:** E0.2 Candidate
+**Decision Status:** Accepted design rules
+**Implementation Status:** Not Implemented
 **Verification Status:** Not Verified
 
 ## 1. Domain map
@@ -29,6 +29,7 @@ Use stable opaque IDs, not display names or filesystem paths as identity.
 Each module is the sole writer for its authoritative records. Cross-module views use application queries. Direct cross-module SQL writes are prohibited. A coordinated transaction is allowed only through an application use case that documents participating repositories and invariants. See `module-boundary-rules.md`.
 
 ## 4. Lifecycle and invariants
+
 - Deletion semantics are explicit: archive/soft-delete where recovery is appropriate; permanent deletion requires a user-visible operation and dependency checks.
 - An Agent Execution cannot be submitted before capability validation, resource-scope authorization, policy evaluation, and required approval.
 - Provider connectivity is distinct from workbench execution status.

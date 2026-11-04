@@ -1,8 +1,8 @@
 # Offline-First Architecture
 
-**Architecture Baseline:** E0.2 Candidate  
-**Decision Status:** Accepted runtime principle  
-**Implementation Status:** Not Implemented  
+**Architecture Baseline:** E0.2 Candidate
+**Decision Status:** Accepted runtime principle
+**Implementation Status:** Not Implemented
 **Verification Status:** Not Verified
 
 ## 1. Definition
