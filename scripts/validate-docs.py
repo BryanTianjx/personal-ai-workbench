@@ -171,9 +171,9 @@ def main() -> int:
         for field in ("Implementation Status:", "Verification Status:"):
             if field not in body:
                 errors.append(f"{path.relative_to(ROOT)}: missing {field}")
-        if not re.search(r"^##\s+Risks?\b", body, re.M):
+        if not re.search(r"^##\s+(?:Risks?\b|风险)", body, re.M):
             errors.append(f"{path.relative_to(ROOT)}: missing risks section")
-        if not re.search(r"^##\s+Validation\b", body, re.M):
+        if not re.search(r"^##\s+(?:Validation\b|待验证事项)", body, re.M):
             errors.append(f"{path.relative_to(ROOT)}: missing validation section")
 
     readme = (ROOT / "README.md").read_text(encoding="utf-8")

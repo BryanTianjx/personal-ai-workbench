@@ -10,6 +10,7 @@
 The desktop workbench requires offline persistence, cross-domain queries, FTS5 search, reliable migrations, and consistent backup/restore. The earlier E0.2 data architecture recorded single-database and database-per-workspace as alternatives; this ADR resolves that open question for the current desktop baseline.
 
 ## Decision drivers
+
 - Keep desktop runtime self-contained and offline-capable.
 - Preserve atomic local use cases and straightforward Dashboard composition.
 - Enforce workspace data boundaries consistently.
@@ -17,6 +18,7 @@ The desktop workbench requires offline persistence, cross-domain queries, FTS5 s
 - Do not preclude a future server data topology.
 
 ## Options considered
+
 1. **Single SQLite database:** one `app.sqlite`; workspace-scoped records carry `workspace_id`; backend policy enforces isolation. Simpler transactions, FTS5, migrations, and backup; requires rigorous scope enforcement.
 2. **Database per Workspace:** stronger physical separation and easier workspace-level file portability; complicates cross-workspace queries, atomic operations, migration orchestration, and consistent backups.
 
@@ -28,6 +30,7 @@ Use one local authoritative SQLite database, `app.sqlite`, for Alpha 0.1 through
 **Negative:** logical isolation is security-critical and needs cross-workspace tests; a large single database may eventually require reassessment; independent per-workspace encryption is not provided by this decision.
 
 ## Risks and mitigations
+
 - **Risk:** A missing Workspace predicate exposes another Workspace's data. **Mitigation:** enforce scope in backend repositories/use cases, use composite constraints where applicable, and test CRUD, search, jobs, imports, attachments and Dashboard paths.
 - **Risk:** A single database becomes a performance or lifecycle bottleneck. **Mitigation:** benchmark representative data volumes and revisit only against the explicit conditions in this ADR; do not prematurely introduce per-Workspace databases.
 - **Risk:** A live SQLite file is copied or shared unsafely. **Mitigation:** use SQLite-consistent backup facilities and prohibit network-share concurrent writes as a sync substitute.
