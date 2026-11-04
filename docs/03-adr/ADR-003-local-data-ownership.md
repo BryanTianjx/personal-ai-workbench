@@ -1,23 +1,23 @@
 # ADR-003: Local-First Data Ownership
 
-- **Status:** Accepted for V1 planning
+- **Status:** Accepted
 - **Date:** 2026-11-04
 - **Decision owners:** Product and engineering
+- **Implementation Status:** Not Implemented
+- **Verification Status:** Not Verified
 
 ## Context
-
 The workbench must function offline and preserve user control. It integrates with systems such as Hindsight and Lingshu that own their own knowledge stores.
 
 ## Decision
-
-SQLite and managed local files are authoritative for workbench-owned desktop records. PostgreSQL is optional for a future server deployment, not a desktop prerequisite. External knowledge systems remain authoritative for their content; the workbench stores references, metadata, permitted local indexes, and sync state. A shared network SQLite file is not a multi-device synchronization mechanism.
+SQLite and managed local files are authoritative for workbench-owned desktop records. The database topology is one local SQLite database, `app.sqlite`, as decided by ADR-006. PostgreSQL is optional for a future server deployment, not a desktop prerequisite. External knowledge systems remain authoritative for their content; the workbench stores references, metadata, permitted local indexes, and sync state. A shared network SQLite file is not a multi-device synchronization mechanism.
 
 ## Consequences
+**Positive:** offline core workflows, transparent local backup/export, simpler transactions and Dashboard queries, less duplication of external knowledge.
+**Negative:** workspace isolation is enforced logically by backend policy and requires comprehensive cross-scope tests; external data may be unavailable or stale offline; future multi-device use requires a separate synchronization protocol.
 
-**Positive:** offline core workflows, transparent local backup/export, less duplication of external knowledge.
-
-**Negative:** external data may be unavailable or stale offline; future multi-device use requires a separate synchronization protocol and conflict model.
+## Validation
+Test workspace isolation across CRUD, FTS5, background jobs, imports, Dashboard queries, attachments, and backup/restore. Verify migration and restore on both desktop platforms.
 
 ## Revisit when
-
-A server edition or multi-device sync is designed. Specify data authority, migration, conflict resolution, encryption, and export guarantees.
+Independent workspace encryption/lifecycle, demonstrated single-database scale limits, or a server/multi-device architecture is designed. Any topology change requires a new ADR.
