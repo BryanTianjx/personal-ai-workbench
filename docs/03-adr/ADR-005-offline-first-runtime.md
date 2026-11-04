@@ -16,6 +16,10 @@ Workspace, project, task, local file, local search, audit history, backup, and r
 **Positive:** predictable offline operation, user control, reduced runtime dependencies.
 **Negative:** remote capabilities are unavailable without connectivity; cached external data may be stale and must be labeled.
 
+## Risks and mitigations
+- **Risk:** UI presents stale external data as current or queues a remote side effect silently. **Mitigation:** expose connectivity/freshness state and require explicit, re-authorized deferred execution.
+- **Risk:** Offline claims are inferred from build success rather than real disconnected operation. **Mitigation:** execute the platform-specific offline matrix on actual Windows and macOS environments and retain evidence.
+
 ## Validation
 Run the complete offline acceptance matrix independently on Windows and macOS, including install, core workflows, backup/restore, reconnect, and duplicate-side-effect checks.
 

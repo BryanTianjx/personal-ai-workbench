@@ -16,6 +16,10 @@ Define a provider-neutral Agent execution contract and implement provider-specif
 **Positive:** replaceable providers, testable contracts, consistent authorization/audit, simulated adapters.
 **Negative:** a lowest-common-denominator contract can hide provider-specific capabilities; adapters need capability declarations and explicit unsupported states.
 
+## Risks and mitigations
+- **Risk:** Provider adapters expose undocumented or unstable interfaces. **Mitigation:** require documented public interfaces, versioned contract tests, and explicit unsupported states.
+- **Risk:** An adapter or workflow bypasses workbench authorization. **Mitigation:** mediate every side effect through the central policy service and test denial/approval paths at the adapter boundary.
+
 ## Validation
 Adapter contract tests must cover authorization denial, scope escape, stale approval, timeout, unknown outcome, duplicate-submit protection, and secret redaction.
 

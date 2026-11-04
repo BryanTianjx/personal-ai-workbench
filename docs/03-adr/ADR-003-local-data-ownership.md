@@ -16,6 +16,10 @@ SQLite and managed local files are authoritative for workbench-owned desktop rec
 **Positive:** offline core workflows, transparent local backup/export, simpler transactions and Dashboard queries, less duplication of external knowledge.
 **Negative:** workspace isolation is enforced logically by backend policy and requires comprehensive cross-scope tests; external data may be unavailable or stale offline; future multi-device use requires a separate synchronization protocol.
 
+## Risks and mitigations
+- **Risk:** Logical Workspace isolation is bypassed by an unscoped query, job, import, or search projection. **Mitigation:** centralize scope enforcement and test every access path, including negative cross-workspace cases.
+- **Risk:** External knowledge references become stale or unavailable offline. **Mitigation:** retain last-known metadata and expose source availability/freshness without claiming remote content is current.
+
 ## Validation
 Test workspace isolation across CRUD, FTS5, background jobs, imports, Dashboard queries, attachments, and backup/restore. Verify migration and restore on both desktop platforms.
 

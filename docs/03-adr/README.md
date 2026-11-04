@@ -11,7 +11,7 @@
 ## 决策索引
 | ADR | 标题 | 状态 |
 |---|---|---|
-| [ADR-001](ADR-001-product-identity.md) | 品牌、产品与仓库身份分离 | Proposed |
+| [ADR-001](ADR-001-product-identity.md) | 品牌、产品与仓库身份分离 | Accepted |
 | [ADR-002](ADR-002-modular-monolith.md) | Modular Monolith | Accepted |
 | [ADR-003](ADR-003-local-data-ownership.md) | Local-First Data Ownership | Accepted |
 | [ADR-004](ADR-004-agent-adapter-boundary.md) | Isolate Agent Providers Behind Adapters | Accepted |
@@ -19,4 +19,4 @@
 | [ADR-006](ADR-006-sqlite-storage-topology.md) | Single SQLite Storage Topology | Accepted |
 
 ## ADR 记录规则
-每份 ADR 至少包含背景、决策驱动因素、候选方案、决策、后果、风险、验证要求和状态。ADR 状态只表示决策状态；实现和验证状态必须单独记录。改变已接受的架构决策时，新增 ADR，不覆盖历史决策。
+每份 ADR 至少包含背景、决策驱动因素、候选方案（如适用）、决策、后果、显式风险与缓解措施、验证要求、决策状态、实施状态和验证状态。ADR 状态只表示决策状态；实现和验证状态必须单独记录。ADR 状态只表示决策状态；实现和验证状态必须单独记录。改变已接受的架构决策时，新增 ADR，不覆盖历史决策。

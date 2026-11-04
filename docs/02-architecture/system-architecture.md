@@ -1,6 +1,9 @@
 # System Architecture
 
-**Status:** Proposed — E0.2 architecture baseline  
+**Architecture Baseline:** E0.2 Candidate  
+**Decision Status:** Accepted design baseline — see ADR-002 through ADR-006  
+**Implementation Status:** Not Implemented  
+**Verification Status:** Not Verified  
 **Applies to:** Alpha 0.1 through V1.0
 
 ## 1. Architectural objectives
@@ -52,6 +55,14 @@ A future Web entry point is a separate deployment concern. It must reuse applica
 
 No microservices, mandatory cloud account, mandatory PostgreSQL, shared writable SQLite over a network share, autonomous high-risk execution, or dependency on undocumented vendor internals.
 
-## 7. Open decisions
+## 7. Accepted architecture decisions and remaining open items
 
-Workspace database partitioning, attachment content-addressing, plugin packaging, and multi-device synchronization require focused ADRs or prototypes. Proposals here are not claims of completed implementation.
+The following decisions are part of the current E0.2 architecture candidate and are not open alternatives:
+
+- **Module/deployment topology:** Modular Monolith for Alpha 0.1 through V1.0; see ADR-002.
+- **Data ownership:** workbench-owned desktop records remain local-first; external knowledge systems retain authority over their own content; see ADR-003.
+- **Agent integration boundary:** provider-specific capabilities remain behind Agent Adapters and central authorization; see ADR-004.
+- **Offline runtime:** core workflows operate locally without mandatory network services; see ADR-005.
+- **Database topology:** one authoritative local `app.sqlite` for Alpha 0.1 through V1.0, with logical Workspace isolation enforced by backend policy; see ADR-006. Database-per-Workspace is not the selected baseline.
+
+Remaining items requiring implementation design or prototype evidence include attachment content-addressing, plugin packaging/distribution, representative SQLite performance, and the future multi-device synchronization protocol. These are not unresolved choices about the current database topology. None of the above decisions implies that implementation or verification is complete.

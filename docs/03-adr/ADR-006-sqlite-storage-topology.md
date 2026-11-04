@@ -7,7 +7,7 @@
 - **Verification Status:** Not Verified
 
 ## Context
-The desktop workbench requires offline persistence, cross-domain queries, FTS5 search, reliable migrations, and consistent backup/restore. The E0.2 data architecture left single-database and database-per-workspace alternatives unresolved.
+The desktop workbench requires offline persistence, cross-domain queries, FTS5 search, reliable migrations, and consistent backup/restore. The earlier E0.2 data architecture recorded single-database and database-per-workspace as alternatives; this ADR resolves that open question for the current desktop baseline.
 
 ## Decision drivers
 - Keep desktop runtime self-contained and offline-capable.
@@ -26,6 +26,11 @@ Use one local authoritative SQLite database, `app.sqlite`, for Alpha 0.1 through
 ## Consequences
 **Positive:** simpler local transactions, Dashboard queries, FTS5, migration, backup/restore, and lower operational burden.
 **Negative:** logical isolation is security-critical and needs cross-workspace tests; a large single database may eventually require reassessment; independent per-workspace encryption is not provided by this decision.
+
+## Risks and mitigations
+- **Risk:** A missing Workspace predicate exposes another Workspace's data. **Mitigation:** enforce scope in backend repositories/use cases, use composite constraints where applicable, and test CRUD, search, jobs, imports, attachments and Dashboard paths.
+- **Risk:** A single database becomes a performance or lifecycle bottleneck. **Mitigation:** benchmark representative data volumes and revisit only against the explicit conditions in this ADR; do not prematurely introduce per-Workspace databases.
+- **Risk:** A live SQLite file is copied or shared unsafely. **Mitigation:** use SQLite-consistent backup facilities and prohibit network-share concurrent writes as a sync substitute.
 
 ## Validation required before implementation verification
 Prototype and test: multiple Workspace isolation across CRUD/search/jobs/imports; composite relationship integrity; FTS5 rebuild; migration from clean and prior versions; backup/restore with attachments; interrupted migration recovery; representative data volume and query latency. Tests must run on Windows and macOS.

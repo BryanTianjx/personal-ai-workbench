@@ -15,7 +15,7 @@ This matrix links the product requirements baseline to architecture ownership an
 | PAW-F-005 | Requirements §2 | Search, Data | FTS5 projection and authorized result lookup | Search relevance, scope filtering and reopen |
 | PAW-F-006 | PRD 3.8 | Filesystem, Security | Managed attachment service | Scope, traversal, symlink and persistence tests |
 | PAW-F-007 | PRD 3.8 | Data, System | Consistent DB + attachment snapshot | Restore in clean profile and verify checksums |
-| PAW-F-008 | Requirements §2 | System & Security | Audit writer owned by system boundary | Required events, redaction and integrity tests |
+| PAW-F-008 | PRD 3.8; Requirements §2 | System & Security | Audit writer owned by system boundary | Defined critical-event catalog, redaction, append-only behavior and integrity tests |
 | PAW-N-001 | PRD 4 | Platform | Windows native packaging | Install, launch, upgrade, uninstall on Windows |
 | PAW-N-002 | PRD 4 | Platform | macOS native packaging | Install, launch, signing, notarization, Gatekeeper |
 | PAW-N-003 | PRD 4 | Offline, Platform | No-network core runtime | Full offline matrix independently on both platforms |
@@ -23,7 +23,7 @@ This matrix links the product requirements baseline to architecture ownership an
 | PAW-S-001 | PRD 3.8 | Security, Platform | No public listener by default | Port/process/network inspection |
 | PAW-S-002 | PRD 5 | Security | Credential references + redaction | Logs, crash reports and diagnostics scan |
 | PAW-S-003 | PRD 3.8 | Security, Filesystem | Canonical path and workspace scope enforcement | Traversal, UNC/drive, symlink and cross-scope tests |
-| PAW-S-004 | Requirements §2 | Agent Authorization | Central policy check before side effects | Unauthorized request denied and audited |
+| PAW-S-004 | Requirements §3; Agent Authorization Model | Agent Authorization | Central policy check before every protected side effect; approval cannot widen grants | Alpha 0.2 gate: default-deny, scope enforcement, approval-plan binding, audit and negative tests pass before Agent execution is enabled |
 | PAW-AI-001 | PRD 3.3 | AI/Agent | Provider-neutral Adapter contract | Fake-provider contract suite |
 | PAW-AI-002 | PRD 3.3 | AI/Agent | Persisted Agent Execution lifecycle | Timeout, cancellation, unknown outcome and result tests |
 | PAW-K-001 | PRD 3.4 | Knowledge | External reference model | Reference persistence and unavailable-source behavior |
