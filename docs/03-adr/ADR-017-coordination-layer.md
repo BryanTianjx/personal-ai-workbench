@@ -16,6 +16,7 @@ Multiple independently owned business domains need consistent orchestration, aut
 Introduce a logical Coordination Layer inside the modular monolith. It is an application-level capability, not a ninth business domain or separately deployed service.
 
 Responsibilities:
+
 - Orchestrate named cross-domain use cases through published commands and query DTOs.
 - Propagate operation, correlation, and causation identifiers.
 - Coordinate short local transactions and transactional Outbox writes.
@@ -59,6 +60,7 @@ A separate service is justified by independent deployment, scaling, or operation
 **Disposition:** Recommended for acceptance with clarification. **Status remains Proposed pending repository-owner ratification.**
 
 Clarifications:
+
 - Implement this capability within paw-application; it is not a separate business domain, crate, process, or deployment tier.
 - It coordinates named application use cases and cross-cutting mechanics only. Business invariants and authoritative writes remain with the owning domain.
 - Outbox intent is persisted atomically with the local state transition. Dispatch occurs after commit and is at-least-once; it does not guarantee exactly-once remote effects.

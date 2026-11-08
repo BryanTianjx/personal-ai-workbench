@@ -23,6 +23,7 @@ Use a Cargo workspace with a small initial set:
 Business domains initially remain explicit modules within the appropriate crate. Extract a domain into its own crate only when independent ownership, dependency enforcement, test isolation, or parallel development demonstrates a concrete benefit.
 
 Rules:
+
 1. Dependencies point inward. Domain never depends on Tauri, SQL drivers, OS APIs, or vendor SDKs.
 2. UI does not access SQLite, repositories, filesystem internals, or external tools directly.
 3. A domain cannot import another domain's private entities, repositories, ORM models, or tables.
@@ -61,6 +62,7 @@ A domain needs independent distribution/deployment or a stable independent build
 **Disposition:** Recommended for acceptance with clarification. **Status remains Proposed pending repository-owner ratification.**
 
 Clarifications:
+
 - The four initial crates are paw-domain, paw-application, paw-infrastructure, and paw-desktop. No one-crate-per-domain split is required for Alpha.
 - Domain events, entities and invariants belong to owning domain modules in paw-domain. Published application DTOs, commands/queries and ports belong to paw-application; paw-domain must not depend on paw-application.
 - paw-infrastructure implements inward-owned ports. paw-desktop is the composition root and Tauri boundary.

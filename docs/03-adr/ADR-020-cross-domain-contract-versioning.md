@@ -81,6 +81,7 @@ A separately deployed service or external public API requires stronger compatibi
 **Disposition:** Recommended for acceptance with clarification. **Status remains Proposed pending repository-owner ratification.**
 
 Clarifications:
+
 - Apply explicit versions to persisted/event envelopes and published cross-domain DTOs; do not version every private function or internal Rust type.
 - Additive optional fields are compatible only if old consumers can safely ignore them and the existing field semantics remain unchanged.
 - Field removal, requiredness changes, semantic changes, and incompatible enum evolution require a new schema version and a documented migration/deprecation policy.
