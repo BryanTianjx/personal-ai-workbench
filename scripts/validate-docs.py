@@ -17,10 +17,14 @@ from urllib.parse import urlparse
 ROOT = Path(__file__).resolve().parents[1]
 DOCS = ROOT / "docs"
 LIST = re.compile(r"^(?:[-+*]|[0-9]+[.)])\s+")
-REQ = re.compile(r"\bPAW-[A-Z]+-[0-9]{3}\b")
 LINK = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
 FENCE = re.compile(r"^\s{0,3}(`{3,}|~{3,})")
 ADR_LINK = re.compile(r"\[(ADR-[0-9]{3})\]\(([^)]+)\)")
+EXPECTED_ADR_NUMBERS = (
+    {f"{i:03d}" for i in range(1, 7)}
+    | {f"{i:03d}" for i in range(13, 17)}
+    | {f"{i:03d}" for i in range(17, 21)}
+)
 
 
 def fix_format(text: str) -> str:
@@ -40,7 +44,6 @@ def fix_format(text: str) -> str:
             if not LIST.match(out[-1]) and not out[-1].startswith((" ", "\t")):
                 out.append("")
         out.append(line.rstrip())
-    # Separate the end of each top-level list from the following block.
     fixed: list[str] = []
     in_fence = False
     fence_char = ""
@@ -95,14 +98,12 @@ def check_markdown(path: Path, text: str, errors: list[str]) -> None:
             if table_width is None:
                 table_width = cells
             elif cells != table_width:
-                # A new table begins after a non-table line; handled below.
                 errors.append(f"{rel}:{number}: inconsistent table column count")
         elif line.strip() and table_width is not None:
             table_width = None
         if LIST.match(line):
             if number > 1 and lines[number - 2].strip() and not LIST.match(lines[number - 2]) and not lines[number - 2].startswith((" ", "\t")):
                 errors.append(f"{rel}:{number}: missing blank line before list (MD032)")
-            # A list's following block must be separated by a blank line.
             if number < len(lines):
                 nxt = lines[number]
                 if nxt.strip() and not LIST.match(nxt) and not nxt.startswith((" ", "\t")):
@@ -161,10 +162,9 @@ def main() -> int:
         indexed.add(adr_id)
     adr_files = sorted(DOCS.joinpath("03-adr").glob("ADR-[0-9][0-9][0-9]-*.md"))
     actual = {p.stem.split("-", 2)[1] for p in adr_files}
-    expected = {f"{i:03d}" for i in range(1, 7)} | {f"{i:03d}" for i in range(13, 17)}
-    if actual != expected:
-        errors.append(f"ADR file set mismatch: expected={sorted(expected)}, actual={sorted(actual)}")
-    if indexed != {f"ADR-{n}" for n in expected}:
+    if actual != EXPECTED_ADR_NUMBERS:
+        errors.append(f"ADR file set mismatch: expected={sorted(EXPECTED_ADR_NUMBERS)}, actual={sorted(actual)}")
+    if indexed != {f"ADR-{n}" for n in EXPECTED_ADR_NUMBERS}:
         errors.append(f"ADR index mismatch: indexed={sorted(indexed)}")
     for path in adr_files:
         body = path.read_text(encoding="utf-8")
@@ -180,7 +180,6 @@ def main() -> int:
     if "E0.2.2.3 Final Documentation Remediation & Freeze Gate" not in readme:
         errors.append("README.md: phase marker is not E0.2.2.3")
 
-    # Validate relative Markdown links across the repository.
     for path in markdown:
         body = path.read_text(encoding="utf-8")
         for raw in LINK.findall(body):
