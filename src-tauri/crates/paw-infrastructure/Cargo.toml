@@ -1,0 +1,16 @@
+[package]
+name = "paw-infrastructure"
+description = "SQLite persistence, migrations, filesystem, credential store, and external adapters"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+paw-application = { path = "../paw-application" }
+paw-domain = { path = "../paw-domain" }
+
+# SQLite driver + content checksum (E1-03: connection policy, migration runner)
+rusqlite = { version = "0.34", features = ["bundled"] }
+sha2 = "0.10"
+thiserror = "1"

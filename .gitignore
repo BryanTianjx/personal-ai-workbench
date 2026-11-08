@@ -1,2 +1,10 @@
 # Tool-local working directories
 .zcode/
+
+# Node / frontend
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Rust / Cargo (any depth: workspace root and test temp dirs)
+target/

@@ -1,0 +1,15 @@
+[package]
+name = "paw-desktop"
+description = "Desktop application boundary: Tauri commands/events and the composition root"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+paw-application = { path = "../paw-application" }
+paw-infrastructure = { path = "../paw-infrastructure" }
+
+[[bin]]
+name = "paw-desktop"
+path = "src/main.rs"
