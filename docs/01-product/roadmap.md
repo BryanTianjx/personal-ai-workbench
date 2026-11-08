@@ -10,7 +10,7 @@
 
 将 E0.2 设计基线转化为可实施工程契约。评审 Coordination Layer、Rust Workspace/Crate 边界、Operation 生命周期与恢复、跨领域契约版本治理、Workspace 安全边界和 UI 信息架构。补齐 E1 纵向切片及验收证据要求。
 
-**状态：Proposed / Under Review。** E0.3 文档完成不等于代码实现完成；ADR-017～020 在单独评审接受前均保持 Proposed。
+**状态：E0.3.1 Review & Consolidation in progress。** ADR-017～020 已完成技术评审并建议接受（带澄清项），但在仓库所有者明确批准前保持 Proposed。E0.3 文档完成不等于代码实现完成。
 
 ## Alpha 0.1 — 可独立工作的本地个人工作台
 
@@ -55,3 +55,14 @@ Tauri shell → React view → typed Tauri command → Rust application use case
 ## 进度管理原则
 
 路线图不预设未经验证的交付日期。每个里程碑应以可复现的验收证据关闭，不以代码行数、页面数量或演示截图代替验收。
+
+
+### E0.3.1 — ADR Review & Consolidation
+
+评审结论建议：
+- ADR-017：建议接受；Coordination 是 paw-application 内的逻辑能力，不是新业务域或独立服务。
+- ADR-018：建议接受；初始四 crate，发布的应用 DTO/Ports 属于 paw-application，领域事件与不变量属于 paw-domain。
+- ADR-019：建议接受；Operation 作为执行信封，OperationAttempt 记录单次副作用尝试；Task/Workflow Run/Agent Execution 各自保留生命周期。
+- ADR-020：建议接受；仅对公开跨域契约与持久化事件版本化，定义兼容性、幂等和隔离失败事件规则。
+
+以上为技术评审建议，不代替仓库所有者批准。E0.3.1 验收还需架构文档一致性、契约测试方案和文档验证通过。

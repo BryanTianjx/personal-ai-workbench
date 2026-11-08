@@ -55,3 +55,15 @@ Process restart recovery; timeout-after-submit and duplicate-submit tests; suppo
 ## Revisit when
 
 A proven durable execution engine is adopted or operation complexity exceeds the local implementation. Authorization, audit, and ownership semantics must be preserved.
+
+## E0.3.1 review outcome
+
+**Disposition:** Recommended for acceptance with clarification. **Status remains Proposed pending repository-owner ratification.**
+
+Clarifications:
+- Operation is a durable execution envelope. It references its owning domain record and never mirrors the owner's business status.
+- Record individual OperationAttempt entries for side-effecting attempts, including request/plan digest, idempotency key when supported, external execution reference, timing, and outcome classification.
+- Keep Task, Workflow Run, Agent Execution, Operation and Audit Event as separate objects with separate owners.
+- OutcomeUnknown means a side effect may have been accepted but its outcome is not established. Reconciliation or explicit human resolution precedes non-idempotent retry.
+- Persisted local intent and Outbox delivery are distinct from provider execution. At-least-once delivery is the guarantee; exactly-once external effects are not claimed.
+- Cancellation is a request/state, not proof that a remote provider stopped.

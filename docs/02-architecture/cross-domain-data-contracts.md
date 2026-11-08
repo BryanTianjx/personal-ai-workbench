@@ -164,3 +164,21 @@ Exact table names and SQL migrations are implementation design, not fixed by thi
 6. Enforce authorization at reference resolution.
 7. Validate event schema-version compatibility and failure handling.
 8. Restore database backups with all Learning associations and event metadata intact.
+
+## 12. E0.3 contract governance and compatibility
+
+ADR-020 proposes the following refinements to the accepted E0.2 contract:
+
+- Public cross-domain application DTOs and persisted/event envelopes have an explicit owner and schema version. Private in-process function arguments do not require independent version numbers.
+- Commands express intent and are handled by the owning domain. Queries return read-only DTOs. An opaque ID is a locator, never an authorization grant.
+- Event envelope identity includes event_id, event_type, schema_version, workspace_id when scoped, aggregate_id, occurred_at, correlation_id, and optional causation_id. Event payloads remain minimal.
+- Delivery is at-least-once. Consumer deduplication uses event_id; deduplication state and the consumer's local effect should commit atomically.
+- Additive optional fields are compatible only when old consumers safely ignore them and semantics remain unchanged. Removing fields, changing field meaning, or changing requiredness is breaking and requires a new schema version plus a migration/deprecation plan.
+- Unsupported versions are quarantined or rejected with diagnostics; they are never parsed as a known version. Unknown event types may be ignored only when the consumer has no required invariant depending on them.
+- Idempotency keys are scoped by command/consumer and operation intent. Reuse with a different payload digest is a conflict, not a second execution.
+- Outbox messages are committed in the same local transaction as the state change they announce. Dispatch is at-least-once, not exactly-once.
+- Archive, detach, tombstone and permanent deletion remain distinct lifecycle actions. Historical records preserve provenance without retaining unauthorized source content.
+
+### Contract evolution checklist
+
+Every contract change records owner, consumer list, schema version, compatibility classification, migration/deprecation window, idempotency behavior, workspace-scope behavior, and fixture tests. Versioning is applied to published boundaries, not every private method.
