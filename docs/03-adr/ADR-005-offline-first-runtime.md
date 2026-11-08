@@ -26,3 +26,7 @@ Run the complete offline acceptance matrix independently on Windows and macOS, i
 
 ## Revisit when
 Local inference becomes a supported product requirement or a server/sync edition is approved. Preserve explicit data-transfer consent and offline core guarantees.
+
+## ADR-021 update (2026-11-08)
+
+Alpha 0.1 onward is Windows-only delivery and acceptance (ADR-021). The offline matrix runs on Windows for current versions; the macOS column is deferred to the macOS readiness milestone, which re-runs the complete matrix independently on real hardware. The original decision and its offline guarantees are unchanged.

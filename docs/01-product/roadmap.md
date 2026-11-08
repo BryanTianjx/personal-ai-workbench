@@ -1,6 +1,6 @@
 # 产品路线图
 
-**状态：** Accepted planning baseline · **版本：** 0.3.0 (E0.3 review extension)
+**状态：** Accepted planning baseline · **版本：** 0.4.0 (E0.3 review extension + ADR-021 stage/version mapping)
 
 ## E0 — 产品与架构基线
 
@@ -14,7 +14,7 @@
 
 ## Alpha 0.1 — 可独立工作的本地个人工作台
 
-Windows/macOS 桌面应用；Goal、Area、Project、Task；Dashboard、搜索和附件；SQLite Migration；审计、备份和恢复；完全离线验收。仅保留 Learning & Growth 的领域边界、稳定 ID 和通用关联扩展点，不交付完整 Learning Center。
+Windows 桌面应用（Windows-only 交付与验收，macOS 见 ADR-021）；Goal、Area、Project、Task；Dashboard、搜索和附件；SQLite Migration；审计、备份和恢复；完全离线验收。仅保留 Learning & Growth 的领域边界、稳定 ID 和通用关联扩展点，不交付完整 Learning Center。
 
 ## Alpha 0.2 — 可控的 Agent、知识与学习基础
 
@@ -36,15 +36,26 @@ Windows/macOS 桌面应用；Goal、Area、Project、Task；Dashboard、搜索�
 
 增加多 Agent 协作、任务委派、可视化工作流和更完整的执行治理。
 
+## 阶段与版本映射
+
+工程阶段（E1–E6+，定义见 E0.3 架构调整方案 §4）与产品版本的映射以 [ADR-021](../03-adr/ADR-021-stage-version-mapping-windows-only-alpha.md) 为准：
+
+- **Alpha 0.1 = E1 + E2 + E3**（工程骨架、Work Management 纵向切片、备份/审计/Operation 基座）。
+- **Alpha 0.2 = E4 + E5**（KnowledgeRef 与 Learning 基础生命周期、Agent adapter 与受控授权）。
+- **Beta 0.5 = E6.x 增量**（Skill/Evidence/Assessment、Creator、Automation 分批交付）。
+- **V1.0** = 跨域工作与成长闭环收口；V1.1+/V1.3+（服务端、多设备、多 Agent）不映射 E 阶段，需另行规划。
+- 平台范围：Alpha 0.1 起 Windows-only 交付与验收；macOS 为后续版本 macOS readiness 里程碑目标。
+
 ## 里程碑门禁
 
+门禁按版本命名，与阶段编号解耦（历史 Gate E1–E5 编号废弃，避免与阶段 E3/E4/E5 语义冲突）：
+
 - Gate E0：PRD、需求追踪、架构和验收基线通过评审。
-- Gate E0.3：Coordination、模块边界、Operation 可靠性、契约版本和 E1 验收方案通过架构评审。
-- Gate E1：Windows 工程骨架可构建；基础通信、Workspace 初始化、SQLite Migration 和 Project 纵向切片通过。
-- Gate E2：本地业务闭环和离线场景通过。
-- Gate E3：Agent/知识/学习集成权限、关联与失败降级通过。
-- Gate E4：内容流程、审核和发布辅助通过。
-- Gate E5：双平台安装、升级、恢复、安全和发布检查通过。
+- Gate E0.3：Coordination、模块边界、Operation 可靠性、契约版本和 E1 验收方案通过架构评审；ADR-017～020 已批准。
+- Gate Alpha 0.1（阶段 E1–E3）：Windows 原生构建、安装、启动；完全离线核心闭环；重启持久化；备份恢复；迁移与 Workspace 隔离测试通过。
+- Gate Alpha 0.2（阶段 E4–E5）：Agent/知识/学习集成权限、关联与失败降级通过。
+- Gate Beta 0.5（阶段 E6.x）：内容流程、审核、发布辅助和证据化评估按增量通过。
+- 发布门禁（V1.0）：Windows 安装、升级、恢复、安全和发布检查通过；macOS 在其 readiness 里程碑独立完成原生验收。
 
 ## E1 首个纵向切片
 

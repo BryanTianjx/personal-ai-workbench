@@ -26,7 +26,7 @@
 自磨工坊是工作控制与组织平台，不重新实现 IDE 或 Agent Runtime，不替代 Lingshu 等知识库的原始文档存储，不将 Hindsight 作为唯一业务数据库；不在未经官方能力验证前承诺完整微信公众号自动发布，也不在首期构建多用户 SaaS 或微服务平台。
 
 ## 成功标准
-Alpha 阶段成功意味着用户可在 Windows 和 macOS 桌面应用中离线创建和管理 Workspace、项目、任务，完成搜索、附件管理、备份恢复和审计；联网时逐步连接外部 Agent 和知识服务，且故障不会破坏本地核心工作。
+Alpha 阶段成功意味着用户可在 Windows 桌面应用中离线创建和管理 Workspace、项目、任务，完成搜索、附件管理、备份恢复和审计；联网时逐步连接外部 Agent 和知识服务，且故障不会破坏本地核心工作。macOS 按后续版本的 macOS readiness 里程碑交付（ADR-021）。
 
 ## 品牌与渠道
 母品牌：自磨工坊。产品描述：Personal AI Workbench。Git 仓库：`personal-ai-workbench`。微信公众号：AI智能体打磨工坊。品牌商标可用性尚待独立检索。

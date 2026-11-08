@@ -91,6 +91,7 @@ The following decisions are part of the current baseline:
 - The Rust workspace starts with four crates (paw-domain, paw-application, paw-infrastructure, paw-desktop) and inward dependencies enforced by automated checks; see ADR-018.
 - Operation is a durable execution envelope with per-attempt records; Task, Workflow Run, Agent Execution and Operation keep separate owners and state machines; see ADR-019.
 - Published cross-domain DTOs and persisted event envelopes are versioned with explicit compatibility, idempotency and quarantine rules; see ADR-020.
+- Stages E1–E3 map to Alpha 0.1, E4–E5 to Alpha 0.2, E6.x to Beta 0.5; Alpha 0.1 onward is Windows-only delivery with macOS reserved behind platform-neutral boundaries; see ADR-021.
 
 Remaining items requiring implementation design or prototype evidence include attachment content-addressing, plugin packaging/distribution, representative SQLite performance, and the future multi-device synchronization protocol. None of the above decisions implies implementation or verification is complete.
 

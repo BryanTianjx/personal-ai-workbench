@@ -5,7 +5,9 @@
 **Verification Status:** Not Verified
 
 ## 1. Evidence record
-For every test record: test ID, OS version/build, CPU architecture, app version/build hash, installer identity, network-isolation method, clean-profile state, steps, expected and actual result, pass/fail, evidence location, tester, and timestamp. Run each required test independently on Windows and macOS. A build-only or cross-compile result is not acceptance.
+For every test record: test ID, OS version/build, CPU architecture, app version/build hash, installer identity, network-isolation method, clean-profile state, steps, expected and actual result, pass/fail, evidence location, tester, and timestamp. A build-only or cross-compile result is not acceptance.
+
+Per ADR-021, the delivery and acceptance platform for current versions is Windows. The macOS column is retained but deferred to the macOS readiness milestone; "Required" in the macOS column applies when that milestone activates, and the full matrix is then re-run independently on real macOS hardware.
 
 ## 2. Acceptance cases
 
@@ -32,7 +34,7 @@ For every test record: test ID, OS version/build, CPU architecture, app version/
 ## 3. Platform-specific checks
 
 - Windows: supported Windows release, native installer, known-folder paths, Credential Manager/DPAPI integration, drive and UNC path handling, symlink/reparse-point behavior, upgrade and uninstall.
-- macOS: actual macOS environment, supported architecture(s), signed/notarized package, Gatekeeper and first-launch prompts, Application Support/Logs/Caches paths, Keychain, sandbox/permissions, symlink behavior, upgrade and uninstall.
+- macOS (deferred to the macOS readiness milestone, ADR-021): actual macOS environment, supported architecture(s), signed/notarized package, Gatekeeper and first-launch prompts, Application Support/Logs/Caches paths, Keychain, sandbox/permissions, symlink behavior, upgrade and uninstall.
 
 ## 4. Release gate
-Alpha 0.1 cannot pass if any P0 case fails on either platform, if data is lost/corrupted, if cross-workspace access succeeds, if remote actions falsely report success, or if an unresolved P0 security defect remains. Each platform must have its own completed evidence set.
+Alpha 0.1 cannot pass if any P0 case fails on the delivery platform (Windows; macOS at its readiness milestone), if data is lost/corrupted, if cross-workspace access succeeds, if remote actions falsely report success, or if an unresolved P0 security defect remains. Each delivered platform must have its own completed evidence set.

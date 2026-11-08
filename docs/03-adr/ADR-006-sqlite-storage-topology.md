@@ -40,3 +40,7 @@ Prototype and test: multiple Workspace isolation across CRUD/search/jobs/imports
 
 ## Revisit conditions
 Reconsider if independent workspace encryption/keys or lifecycle becomes a requirement, scale testing demonstrates material single-database limits, or a multi-user server architecture requires a different isolation boundary. Any change requires a superseding ADR.
+
+## ADR-021 update (2026-11-08)
+
+Current-version implementation verification runs on Windows only (ADR-021); the macOS portion of the validation above is deferred to the macOS readiness milestone and re-run there. The single-SQLite topology and Workspace isolation decision are unchanged.

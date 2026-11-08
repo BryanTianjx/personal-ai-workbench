@@ -34,7 +34,7 @@ On reconnect, refresh external status with bounded retries. Preserve local recor
 Multi-device sync is out of scope for the initial desktop baseline. Multiple clients must not concurrently write a shared SQLite file over a network share. Future sync requires identity, versioning, conflict resolution, tombstones, encryption, retries, and audit. PostgreSQL alone is not a synchronization protocol.
 
 ## 7. Offline acceptance
-For each Windows/macOS release candidate: verify installer availability without network; install in a network-isolated environment; launch and create/open workspace; create/edit/search projects and tasks; add/open permitted attachments; view audit/execution history; create and verify backup; restore into a clean profile; confirm remote integrations show explicit unavailable state and no false success; reconnect and verify no duplicate/corrupt records. See `../04-quality/offline-acceptance-matrix.md`.
+For each Windows release candidate (current delivery target, ADR-021; macOS re-runs this matrix at its readiness milestone): verify installer availability without network; install in a network-isolated environment; launch and create/open workspace; create/edit/search projects and tasks; add/open permitted attachments; view audit/execution history; create and verify backup; restore into a clean profile; confirm remote integrations show explicit unavailable state and no false success; reconnect and verify no duplicate/corrupt records. See `../04-quality/offline-acceptance-matrix.md`.
 
 ## 8. Failure behavior
 Remote timeouts preserve local state and expose actionable errors. Never silently switch provider, transmit data to an unconfigured service, or treat stale cache as fresh.

@@ -27,6 +27,7 @@
 | [ADR-018](ADR-018-rust-workspace-boundaries.md) | Rust Workspace and Enforceable Module Boundaries | Accepted |
 | [ADR-019](ADR-019-operation-lifecycle-reliability.md) | Durable Operation Lifecycle and Reliability Semantics | Accepted |
 | [ADR-020](ADR-020-cross-domain-contract-versioning.md) | Cross-Domain Contract and Event Versioning | Accepted |
+| [ADR-021](ADR-021-stage-version-mapping-windows-only-alpha.md) | Stage-to-Version Mapping and Windows-Only Alpha 0.1 Delivery | Accepted |
 
 ADR-007～012 未在当前基线中发现，不因新增 ADR 而补造或重新编号；如后续需要，应先核对历史决策来源和记录。
 

@@ -1,6 +1,6 @@
 # 产品范围与边界
 
-**状态：** Accepted planning baseline · **版本：** 0.2.0
+**状态：** Accepted planning baseline · **版本：** 0.3.0（ADR-021 阶段版本映射与平台范围调整）
 
 ## 产品定位
 
@@ -23,7 +23,7 @@ Dashboard 是跨域只读汇总，不作为独立业务数据所有者。
 
 ## Alpha 0.1 必须交付
 
-Windows 和 macOS 桌面应用可构建、安装、启动；本地 Workspace 初始化；Goal/Area/Project/Task 管理；真实数据 Dashboard；项目/任务本地搜索；附件元数据和受控文件访问；SQLite 版本化迁移；数据库与附件备份恢复；关键操作审计；完全断网下核心工作闭环。Learning & Growth 只保留领域边界、稳定 ID/关联扩展点，不交付完整学习中心。
+Windows 桌面应用可构建、安装、启动（Windows-only 交付与验收，见 ADR-021；macOS 为后续版本的 macOS readiness 里程碑目标，架构保持平台中立）；本地 Workspace 初始化；Goal/Area/Project/Task 管理；真实数据 Dashboard；项目/任务本地搜索；附件元数据和受控文件访问；SQLite 版本化迁移；数据库与附件备份恢复；关键操作审计；完全断网下核心工作闭环。Learning & Growth 只保留领域边界、稳定 ID/关联扩展点，不交付完整学习中心。
 
 ## 后续扩展
 
