@@ -23,10 +23,10 @@
 | [ADR-014](ADR-014-learning-project-integration.md) | Learning and Project Integration Contract | Accepted |
 | [ADR-015](ADR-015-skill-evidence-and-assessment.md) | Skill, Evidence, and Assessment Model | Accepted |
 | [ADR-016](ADR-016-learning-knowledge-boundary.md) | Learning and Knowledge Ownership Boundary | Accepted |
-| [ADR-017](ADR-017-coordination-layer.md) | Coordination Layer for Cross-Domain Operations | Proposed |
-| [ADR-018](ADR-018-rust-workspace-boundaries.md) | Rust Workspace and Enforceable Module Boundaries | Proposed |
-| [ADR-019](ADR-019-operation-lifecycle-reliability.md) | Durable Operation Lifecycle and Reliability Semantics | Proposed |
-| [ADR-020](ADR-020-cross-domain-contract-versioning.md) | Cross-Domain Contract and Event Versioning | Proposed |
+| [ADR-017](ADR-017-coordination-layer.md) | Coordination Layer for Cross-Domain Operations | Accepted |
+| [ADR-018](ADR-018-rust-workspace-boundaries.md) | Rust Workspace and Enforceable Module Boundaries | Accepted |
+| [ADR-019](ADR-019-operation-lifecycle-reliability.md) | Durable Operation Lifecycle and Reliability Semantics | Accepted |
+| [ADR-020](ADR-020-cross-domain-contract-versioning.md) | Cross-Domain Contract and Event Versioning | Accepted |
 
 ADR-007～012 未在当前基线中发现，不因新增 ADR 而补造或重新编号；如后续需要，应先核对历史决策来源和记录。
 
@@ -34,9 +34,9 @@ ADR-007～012 未在当前基线中发现，不因新增 ADR 而补造或重新�
 
 每份 ADR 至少包含背景、决策驱动因素、候选方案（如适用）、决策、后果、显式风险与缓解措施、验证要求、决策状态、实施状态和验证状态。ADR 状态只表示决策状态；实现和验证状态必须单独记录。改变已接受的架构决策时，新增 ADR，不覆盖历史决策。
 
-E0.3 新增 ADR-017～020 当前均为 Proposed，评审批准前不得作为已接受架构决策或实现依据。
+E0.3.2 已于 2026-11-08 批准 ADR-017～020。其状态 Accepted 仅表示设计决策已批准；实现和验证状态仍分别为 Not Implemented / Not Verified。
 
 
 ## E0.3.1 review note
 
-ADR-017～020 已完成技术评审，当前 disposition 均为 **Recommended for acceptance with clarification**。四份 ADR 的正式状态仍为 **Proposed**，等待仓库所有者批准；不得将技术评审建议误写为已批准的组织决策。实现和验证状态仍分别为 Not Implemented / Not Verified。
+ADR-017～020 已于 E0.3.2 完成正式批准，状态为 **Accepted**；E0.3.1 记录的澄清项为规范性约束。Accepted 不代表代码已实现或验证；实现和验证状态仍分别为 Not Implemented / Not Verified。
