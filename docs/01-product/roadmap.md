@@ -10,7 +10,7 @@
 
 将 E0.2 设计基线转化为可实施工程契约。评审 Coordination Layer、Rust Workspace/Crate 边界、Operation 生命周期与恢复、跨领域契约版本治理、Workspace 安全边界和 UI 信息架构。补齐 E1 纵向切片及验收证据要求。
 
-**状态：E0.3.1 Review & Consolidation in progress。** ADR-017～020 已完成技术评审并建议接受（带澄清项），但在仓库所有者明确批准前保持 Proposed。E0.3 文档完成不等于代码实现完成。
+**状态：E0.3.2 Architecture Ratification & E1 Engineering Specification completed as a design baseline。** ADR-017～020 已于 2026-11-08 批准为 Accepted，澄清项为规范性约束。E1 工程规格已形成；代码实现与运行时验证仍未完成。
 
 ## Alpha 0.1 — 可独立工作的本地个人工作台
 
