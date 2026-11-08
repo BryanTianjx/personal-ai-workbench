@@ -3,8 +3,10 @@
 - **Status:** Accepted
 - **Decision date:** 2026-11-08
 - **Decision scope:** Alpha 0.1 through V1.0
+
 Implementation Status: Not Implemented
 Verification Status: Not Verified
+
 - **Related:** ADR-013, ADR-015, ADR-016
 
 ## Context
