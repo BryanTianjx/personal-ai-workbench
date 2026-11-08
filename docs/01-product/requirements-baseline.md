@@ -1,6 +1,6 @@
 # 需求基线与追踪规则
 
-**状态：** Accepted planning baseline；实现状态另行追踪  
+**状态：** Accepted planning baseline；实现状态另行追踪
 **版本：** 0.2.0
 
 ## 1. 优先级定义
