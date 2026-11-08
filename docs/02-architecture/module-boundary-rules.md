@@ -1,7 +1,7 @@
 # Module Boundary Rules
 
-**Architecture Baseline:** E0.2 + Learning & Growth extension  
-**Implementation Status:** Not Implemented  
+**Architecture Baseline:** E0.2 + Learning & Growth extension
+**Implementation Status:** Not Implemented
 **Verification Status:** Not Verified
 
 ## 1. Ownership
