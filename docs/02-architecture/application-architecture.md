@@ -50,3 +50,30 @@ Agent runs, imports, indexing, backup, and publishing preparation are durable re
 
 ## 8. Testing
 Domain unit tests; application tests with fake ports; repository tests with temporary SQLite; adapter contract tests; Tauri boundary authorization tests; Dashboard query-to-database reconciliation tests.
+
+## 9. E0.3 Coordination Layer
+
+Coordination is a logical capability within paw-application, not a business domain. It coordinates named cross-domain use cases and cross-cutting execution mechanics. Business invariants and authoritative writes remain in the owning module. It must not become a generic service locator, expose private repositories, or permit UI-to-infrastructure shortcuts.
+
+### Transaction and external-effect protocol
+
+1. Resolve actor, Workspace and target context.
+2. Validate command and authorize the requested capability/scope.
+3. Execute owning-domain invariants and local writes in a short SQLite transaction.
+4. Persist required Outbox messages in that same transaction.
+5. Commit.
+6. Dispatch external/provider work outside the transaction, rechecking authorization immediately before the side effect.
+7. Persist attempt/result/reconciliation state and audit outcome.
+8. Consumers deduplicate and apply local effects transactionally.
+
+A local Outbox guarantees durable intent after commit; it does not guarantee that a remote provider performed an action exactly once. Provider idempotency keys are used when supported. Otherwise uncertain submission outcomes require reconciliation or human resolution.
+
+## 10. Operation context
+
+Operation is a cross-cutting execution envelope, not a replacement for Task, Workflow Run, Agent Execution, or Audit Event. It references an owning object and stores correlation, attempts, retry classification, cancellation and recovery metadata. Each owner retains its own state machine and transition authority.
+
+Minimum context propagated through application calls and event dispatch: operation_id (when durable work exists), correlation_id, causation_id (when triggered by another command/event), actor_id, workspace_id (when scoped), and idempotency_key (for mutating commands where required). Context values are validated at trust boundaries and never used as authorization by themselves.
+
+## 11. Retry and recovery
+
+Classify failures as permanent validation/policy failure, transient pre-submit failure, accepted/running, and indeterminate post-submit outcome. Backoff applies only to retryable cases. OutcomeUnknown is not a synonym for Failed. Reconcile against provider state or require owner resolution before a potentially duplicate side effect. Cancellation is cooperative and capability-dependent; unsupported cancellation is represented explicitly.

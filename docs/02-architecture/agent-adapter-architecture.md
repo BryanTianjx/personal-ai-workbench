@@ -41,3 +41,11 @@ Test capabilities, malformed input, authorization refusal, scope escape, stale a
 
 ## 8. Initial integrations
 Hermes, Codex, and Cursor are candidates. Use stable public CLI/API/MCP/file interfaces verified against target versions. No integration is supported until a versioned compatibility test and operational guide exist.
+
+## 9. E0.3 Operation relationship and reconciliation
+
+Agent Execution remains AI Collaboration-owned and represents a provider-facing execution lifecycle. Operation is the cross-cutting workbench execution envelope and may reference one or more Agent Execution IDs. Workflow Run remains Automation-owned and may coordinate multiple Operations. Task remains a Work Management business object. None inherits another object's status or transition authority.
+
+Each submission attempt records the workbench execution ID, provider, request/plan digest, idempotency key when supported, submitted-at time, provider execution ID when known, and outcome classification. A timeout after possible provider acceptance becomes OutcomeUnknown. The adapter first attempts provider status reconciliation using a known external ID or provider-supported idempotency key. If reconciliation cannot establish outcome, the system presents an explicit unresolved state; it does not silently resubmit a non-idempotent request.
+
+The adapter reports provider capability limitations (including cancellation and idempotency support) as data. It cannot decide workbench authorization, broaden scope, or convert an indeterminate result into success.

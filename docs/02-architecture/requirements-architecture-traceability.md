@@ -20,3 +20,16 @@
 ## Verification rules
 
 A design link is not implementation evidence. Each requirement must later identify its migration, application command/query, UI workflow, automated test, and manual acceptance evidence. `verified` may be assigned only after reproducible evidence exists.
+
+## E0.3 architecture decision traceability
+
+The following are architecture decisions and implementation-readiness constraints, not new product requirement IDs. They therefore do not alter the formal requirements baseline or the one-to-one ID-set validation.
+
+| Architecture concern | Decision record | Design location | Required future evidence |
+|---|---|---|---|
+| Cross-domain orchestration boundary | ADR-017 | application-architecture.md; system-architecture.md | dependency checks; Outbox atomicity; cross-domain use-case tests |
+| Rust crate/module dependency direction | ADR-018 | module-boundary-rules.md; system-architecture.md | Cargo workspace build; forbidden-edge tests |
+| Durable operation and recovery | ADR-019 | application-architecture.md; data-architecture.md; agent-adapter-architecture.md | restart recovery; indeterminate-submit reconciliation; cancellation tests |
+| Contract/event evolution | ADR-020 | cross-domain-data-contracts.md; data-architecture.md | version fixtures; duplicate delivery; quarantine and migration tests |
+
+All four ADRs remain Proposed pending repository-owner ratification. Their proposed design must not be represented as implemented or verified.

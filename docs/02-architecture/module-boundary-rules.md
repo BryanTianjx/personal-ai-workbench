@@ -48,3 +48,20 @@ A module emits versioned domain events only after its invariant-preserving state
 ## 7. Enforcement
 
 Enforce boundaries through crate/module visibility, application interfaces, repository ownership, architecture tests, and code review. A convention without tests is insufficient.
+
+## 8. E0.3 Rust workspace enforcement
+
+The initial Cargo workspace contains a deliberately small set of crates:
+
+- `paw-domain`: domain modules, entities, value objects, invariants and domain events.
+- `paw-application`: use cases, published application contracts/DTOs, ports, authorization orchestration and Coordination Layer.
+- `paw-infrastructure`: SQLite/filesystem/credential-store implementations, Outbox dispatcher and external adapters.
+- `paw-desktop`: Tauri commands/events, UI bridge and composition root.
+
+Dependency direction is inward: paw-desktop may depend on paw-application and infrastructure composition; paw-infrastructure implements ports defined inward; paw-application depends on domain and port abstractions; paw-domain has no dependency on application, infrastructure, Tauri, SQL drivers or provider SDKs. Published cross-domain application contracts belong to paw-application; domain events and invariants remain in their owning domain module.
+
+Do not create one crate per business domain initially. Extract a domain crate only with a recorded rationale based on independent ownership, dependency enforcement, test isolation or parallel development. Enforce forbidden dependency edges in CI; naming conventions alone are insufficient.
+
+## 9. Coordination and operation ownership
+
+Coordination is implemented in the application layer and orchestrates named use cases. It does not own business entities. Operation is a cross-cutting execution record; Task, Workflow Run, Agent Execution and Audit Event retain their respective owners and lifecycles. Cross-domain flows use published contracts and stable IDs, never private repositories or direct foreign-table writes.

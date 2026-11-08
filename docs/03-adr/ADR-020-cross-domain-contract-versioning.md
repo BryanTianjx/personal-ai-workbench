@@ -75,3 +75,15 @@ Contract fixture compatibility; duplicate delivery/idempotent consumer; unknown 
 ## Revisit when
 
 A separately deployed service or external public API requires stronger compatibility guarantees. Preserve these principles while adding an API lifecycle policy.
+
+## E0.3.1 review outcome
+
+**Disposition:** Recommended for acceptance with clarification. **Status remains Proposed pending repository-owner ratification.**
+
+Clarifications:
+- Apply explicit versions to persisted/event envelopes and published cross-domain DTOs; do not version every private function or internal Rust type.
+- Additive optional fields are compatible only if old consumers can safely ignore them and the existing field semantics remain unchanged.
+- Field removal, requiredness changes, semantic changes, and incompatible enum evolution require a new schema version and a documented migration/deprecation policy.
+- Unknown event types may be ignored only where no required invariant depends on them. Unsupported schema versions must be quarantined/rejected, not guessed or parsed as a known version.
+- Idempotency keys are scoped to the command/consumer and intent; same key with a different canonical request digest is a conflict.
+- Outbox dispatch is at-least-once; consumer deduplication is committed atomically with local effects where feasible.

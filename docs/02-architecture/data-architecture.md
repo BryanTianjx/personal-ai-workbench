@@ -70,3 +70,18 @@ A backup is a consistent snapshot of app.sqlite, required attachments, and a man
 ## 9. Privacy and retention
 
 Secrets belong in OS credential stores, not SQLite or logs. Logs/audit use data minimization and redaction. Export and deletion must state effects on attachments, indexes, backups, external references, Learning history, and evidence provenance.
+
+## 10. E0.3 operation and Outbox persistence guidance
+
+E0.3 adds logical persistence requirements, not a frozen physical schema. The implementation may use normalized tables, but must preserve these distinct records:
+
+- Operation: durable cross-cutting execution envelope linked to its owning domain object.
+- OperationAttempt: one attempt to perform a potentially side-effecting step, including attempt number, start/end time, classification and external reference where available.
+- OutboxMessage: event/message committed atomically with the owning local state transition.
+- ProcessedMessage: consumer deduplication marker committed with the consumer's local effect where feasible.
+
+Every workspace-scoped record carries workspace_id and is queried under the same backend authorization boundary. System-wide operations may have an explicit null/non-workspace scope only where the owning use case documents why. Do not encode null as a wildcard grant.
+
+Outbox dispatch is at-least-once. Retain message ID, contract type/version, payload-minimization policy, attempts, next-attempt time, delivery status, and safe error category. Poison messages are quarantined for diagnosis; they must not retry forever. Credentials, prompts, full documents and raw attachments are not event payloads.
+
+Operation and attempt retention, redaction, export, and deletion behavior must be specified before production use. Do not persist secrets or rely on provider transcript retention as the workbench's source of truth.

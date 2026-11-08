@@ -53,3 +53,16 @@ Cross-domain use-case tests; transaction rollback and Outbox atomicity; duplicat
 ## Revisit when
 
 A separate service is justified by independent deployment, scaling, or operational ownership evidence. A superseding ADR and server/runtime design are required.
+
+## E0.3.1 review outcome
+
+**Disposition:** Recommended for acceptance with clarification. **Status remains Proposed pending repository-owner ratification.**
+
+Clarifications:
+- Implement this capability within paw-application; it is not a separate business domain, crate, process, or deployment tier.
+- It coordinates named application use cases and cross-cutting mechanics only. Business invariants and authoritative writes remain with the owning domain.
+- Outbox intent is persisted atomically with the local state transition. Dispatch occurs after commit and is at-least-once; it does not guarantee exactly-once remote effects.
+- Authorization is evaluated before each protected side effect, not merely when an Operation is first created.
+- Operation is a linked execution envelope, not a universal state machine or owner of Task/Workflow/Agent records.
+
+The accepted architecture remains Modular Monolith and Local-first. No new infrastructure service is introduced.

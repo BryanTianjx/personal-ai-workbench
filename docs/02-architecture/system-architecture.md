@@ -89,3 +89,30 @@ The following decisions are part of the current baseline:
 - Learning and Knowledge retain separate ownership; see ADR-016.
 
 Remaining items requiring implementation design or prototype evidence include attachment content-addressing, plugin packaging/distribution, representative SQLite performance, and the future multi-device synchronization protocol. None of the above decisions implies implementation or verification is complete.
+
+## 9. E0.3 coordination and execution model
+
+E0.3 proposes a logical Coordination Layer inside the Application Layer. It is not a ninth business domain, a separate process, or a deployment tier. It owns cross-cutting orchestration mechanics only: operation/correlation context, named cross-domain use-case coordination, authorization invocation, local transaction coordination, Outbox dispatch, retry classification, cancellation, reconciliation, and recovery.
+
+The owning business domain remains authoritative for its entities and invariants. The Coordination Layer must not expose private repositories, own business records, or become a generic service locator. Cross-domain flows use published application contracts. External/provider calls occur outside SQLite transactions.
+
+### Execution object ownership
+
+| Object | Owner | Responsibility |
+|---|---|---|
+| Task | Work Management | User-facing business work and status |
+| Workflow Run | Automation | Workbench-defined workflow instance |
+| Agent Execution | AI Collaboration | Provider invocation and provider-facing lifecycle |
+| Operation | Application coordination capability | Durable execution envelope, attempts, correlation and recovery |
+| Audit Event | System & Security | Security and consequential-action evidence |
+| Outbox Message | Infrastructure/application persistence | Reliable delivery of committed local events |
+
+Operation references its owner and does not shadow its business state. A single workflow may produce multiple operations and Agent Executions; a Task may be related to a Workflow Run without sharing its state machine.
+
+### Rust workspace boundary target
+
+The initial workspace is intentionally small: `paw-domain`, `paw-application`, `paw-infrastructure`, and `paw-desktop`. Domain modules remain explicit within these crates until extraction has demonstrated value. Published application contracts belong to paw-application; domain events and invariants belong to their owning domain module. The dependency graph points inward and is tested.
+
+## 10. E0.3 review disposition
+
+ADR-017–020 are recommended for acceptance as design decisions with the clarifications recorded in their E0.3.1 review notes. They remain Proposed until explicit repository-owner ratification. Implementation and verification remain Not Implemented and Not Verified.

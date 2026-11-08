@@ -59,3 +59,11 @@ Policy service unavailable, scope resolution failure, stale approval, unknown su
 
 ## 9. Minimum conformance tests
 Default-deny; cross-workspace read/write denial; path traversal and symlink escape; scope narrowing; stale/expired/revoked approval; changed plan digest; unauthorized tool; credential mediation; Agent delegation denial; audit redaction; policy-service failure.
+
+## 10. E0.3 operation and approval binding
+
+Operation and correlation identifiers support traceability but never grant authority. Each protected side effect is independently authorized against the current actor, Workspace, target resource, capability, tool, and time window.
+
+An approval is bound to a canonical immutable plan digest, exact operation set, exact resource scope, target/provider identity, and expiry. The execution attempt must present the same digest and scope. A retry that changes target, payload semantics, tool, permissions, or resource scope requires a new authorization decision and, where applicable, a new approval. An idempotent transport retry of the exact approved request may reuse the same approval only within its defined validity and attempt policy.
+
+The application records the approval reference and digest on the Operation/attempt for audit linkage. It does not copy secrets or sensitive full payloads into the approval record. Authorization is re-evaluated immediately before each side effect; an Operation created while a grant was valid does not preserve that grant after expiry or revocation.

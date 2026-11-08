@@ -55,3 +55,14 @@ Cargo workspace builds on Windows; domain tests run without Tauri/database depen
 ## Revisit when
 
 A domain needs independent distribution/deployment or a stable independent build boundary that outweighs crate overhead.
+
+## E0.3.1 review outcome
+
+**Disposition:** Recommended for acceptance with clarification. **Status remains Proposed pending repository-owner ratification.**
+
+Clarifications:
+- The four initial crates are paw-domain, paw-application, paw-infrastructure, and paw-desktop. No one-crate-per-domain split is required for Alpha.
+- Domain events, entities and invariants belong to owning domain modules in paw-domain. Published application DTOs, commands/queries and ports belong to paw-application; paw-domain must not depend on paw-application.
+- paw-infrastructure implements inward-owned ports. paw-desktop is the composition root and Tauri boundary.
+- The dependency graph must be enforced by automated checks; a directory layout or naming convention is not sufficient.
+- Any additional crate requires a written extraction rationale and testable boundary.

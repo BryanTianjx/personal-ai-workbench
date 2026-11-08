@@ -35,3 +35,8 @@ ADR-007～012 未在当前基线中发现，不因新增 ADR 而补造或重新�
 每份 ADR 至少包含背景、决策驱动因素、候选方案（如适用）、决策、后果、显式风险与缓解措施、验证要求、决策状态、实施状态和验证状态。ADR 状态只表示决策状态；实现和验证状态必须单独记录。改变已接受的架构决策时，新增 ADR，不覆盖历史决策。
 
 E0.3 新增 ADR-017～020 当前均为 Proposed，评审批准前不得作为已接受架构决策或实现依据。
+
+
+## E0.3.1 review note
+
+ADR-017～020 已完成技术评审，当前 disposition 均为 **Recommended for acceptance with clarification**。四份 ADR 的正式状态仍为 **Proposed**，等待仓库所有者批准；不得将技术评审建议误写为已批准的组织决策。实现和验证状态仍分别为 Not Implemented / Not Verified。

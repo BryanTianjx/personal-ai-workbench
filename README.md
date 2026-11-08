@@ -52,7 +52,7 @@ Git repository: personal-ai-workbench
 ## 项目状态
 
 - **E0.2.2.3 Final Documentation Remediation & Freeze Gate：** Completed as documentation/design baseline only; software implementation and runtime verification are not implied.
-- **E0.3：** Architecture Consolidation & Engineering Readiness — Proposed, under review on docs/e0.3-architecture-consolidation.
+- **E0.3：** Architecture Consolidation & Engineering Readiness — E0.3.1 review/consolidation in progress on docs/e0.3-architecture-consolidation; ADR-017～020 remain Proposed pending owner ratification.
 - **E1：** Engineering skeleton and first Windows vertical slice — not implemented or verified by this documentation change.
 
 ## 文档入口
