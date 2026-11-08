@@ -1,6 +1,6 @@
 # ADR-020: Cross-Domain Contract and Event Versioning
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-08
 - **Decision scope:** Application DTOs, domain events, compatibility and evolution
 - **Implementation Status:** Not Implemented
@@ -75,6 +75,10 @@ Contract fixture compatibility; duplicate delivery/idempotent consumer; unknown 
 ## Revisit when
 
 A separately deployed service or external public API requires stronger compatibility guarantees. Preserve these principles while adding an API lifecycle policy.
+
+## E0.3.2 ratification
+
+**Decision:** Accepted on 2026-11-08 as part of the repository owner's E0.3.2 direction. The E0.3.1 clarifications are normative and form part of this decision. Acceptance establishes the design baseline only; implementation remains Not Implemented and verification remains Not Verified.
 
 ## E0.3.1 review outcome
 
