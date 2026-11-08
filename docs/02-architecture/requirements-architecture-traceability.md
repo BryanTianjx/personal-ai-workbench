@@ -3,18 +3,23 @@
 **Baseline:** E0.2 + Learning & Growth extension  
 **Status:** Accepted design traceability; implementation evidence pending
 
-| Requirement / Capability | Owning domain | Primary design | ADR | Target |
-|---|---|---|---|---|
-| Goal / Area / Project / Task | Work Management | domain-architecture.md | ADR-002, ADR-006 | Alpha 0.1 |
-| Local data and workspace isolation | System / all domains | data-architecture.md | ADR-003, ADR-006 | Alpha 0.1 |
-| Agent registration and execution boundary | AI Collaboration | agent-adapter-architecture.md, agent-authorization-model.md | ADR-004 | Alpha 0.2 |
-| Offline core workflows | Platform / all domains | offline-first-architecture.md | ADR-005 | Alpha 0.1 |
-| Learning Roadmap / Plan / Item / Session | Learning & Growth | learning-growth-PRD.md | ADR-013 | Alpha 0.2 |
-| Learning ↔ Project / Task integration | Learning & Work Management | cross-domain-data-contracts.md | ADR-014 | Alpha 0.2 |
-| Skill, evidence, assessment history | Learning & Growth | learning-growth-PRD.md, cross-domain-data-contracts.md | ADR-015 | Beta 0.5 |
-| Learning ↔ Knowledge ownership boundary | Learning & Knowledge | cross-domain-data-contracts.md, data-architecture.md | ADR-016 | Alpha 0.2 |
-| External KnowledgeRef | Knowledge & Context | data-architecture.md | ADR-003, ADR-016 | Alpha 0.2 |
-| Backup/restore of Learning records | System / Learning | data-architecture.md | ADR-006, ADR-013 | Alpha 0.2 |
+| Requirement ID | Capability | Owning domain | Primary design | ADR | Target |
+|---|---|---|---|---|---|
+| PAW-F-001 | Workspace / Goal / Area / Project / Task | Work Management | domain-architecture.md | ADR-002, ADR-006 | Alpha 0.1 |
+| PAW-N-001 | Local data and workspace isolation | System / all domains | data-architecture.md | ADR-003, ADR-006 | Alpha 0.1 |
+| PAW-S-001 | Security baseline and access restrictions | System & Security | security-architecture.md | ADR-003, ADR-004 | Alpha 0.1 |
+| PAW-LG-001 | Learning Roadmap lifecycle | Learning & Growth | learning-growth-PRD.md | ADR-013 | Alpha 0.2 |
+| PAW-LG-002 | Learning Plan and Roadmap relationship | Learning & Growth | learning-growth-PRD.md | ADR-013 | Alpha 0.2 |
+| PAW-LG-003 | Learning Item lifecycle | Learning & Growth | learning-growth-PRD.md | ADR-013 | Alpha 0.2 |
+| PAW-LG-004 | Learning Session records | Learning & Growth | learning-growth-PRD.md | ADR-013 | Alpha 0.2 |
+| PAW-LG-005 | Learning and Project association | Learning / Work Management | cross-domain-data-contracts.md | ADR-014 | Alpha 0.2 |
+| PAW-LG-006 | Learning Item requests Task creation | Learning / Work Management | cross-domain-data-contracts.md | ADR-014 | Alpha 0.2 |
+| PAW-LG-007 | Project learning-gap proposal | Work Management / Learning | cross-domain-data-contracts.md | ADR-014 | Beta 0.5 |
+| PAW-LG-008 | Skill and SkillEvidence provenance | Learning & Growth | learning-growth-PRD.md | ADR-015 | Beta 0.5 |
+| PAW-LG-009 | User-confirmed LearningAssessment history | Learning & Growth | learning-growth-PRD.md | ADR-015 | Beta 0.5 |
+| PAW-LG-010 | Explainable learning and project growth reports | Learning & Growth | learning-growth-PRD.md | ADR-013, ADR-015 | V1.0 |
+| PAW-K-001 | KnowledgeRef and external knowledge references | Knowledge & Context | data-architecture.md | ADR-003, ADR-016 | Alpha 0.2 |
+| PAW-S-004 | Agent authorization, approval, and audit gate | AI Collaboration / System | agent-authorization-model.md | ADR-004 | Alpha 0.2 gate |
 
 ## Verification rules
 
