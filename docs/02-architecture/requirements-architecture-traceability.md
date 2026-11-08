@@ -1,13 +1,10 @@
 # Requirements–Architecture Traceability
 
-**Baseline:** E0.2 + Learning & Growth extension  
+**Baseline:** E0.2 + Learning & Growth extension
 **Status:** Accepted design traceability; implementation evidence pending
 
 | Requirement ID | Capability | Owning domain | Primary design | ADR | Target |
 |---|---|---|---|---|---|
-| PAW-F-001 | Workspace / Goal / Area / Project / Task | Work Management | domain-architecture.md | ADR-002, ADR-006 | Alpha 0.1 |
-| PAW-N-001 | Local data and workspace isolation | System / all domains | data-architecture.md | ADR-003, ADR-006 | Alpha 0.1 |
-| PAW-S-001 | Security baseline and access restrictions | System & Security | security-architecture.md | ADR-003, ADR-004 | Alpha 0.1 |
 | PAW-LG-001 | Learning Roadmap lifecycle | Learning & Growth | learning-growth-PRD.md | ADR-013 | Alpha 0.2 |
 | PAW-LG-002 | Learning Plan and Roadmap relationship | Learning & Growth | learning-growth-PRD.md | ADR-013 | Alpha 0.2 |
 | PAW-LG-003 | Learning Item lifecycle | Learning & Growth | learning-growth-PRD.md | ADR-013 | Alpha 0.2 |
@@ -18,7 +15,6 @@
 | PAW-LG-008 | Skill and SkillEvidence provenance | Learning & Growth | learning-growth-PRD.md | ADR-015 | Beta 0.5 |
 | PAW-LG-009 | User-confirmed LearningAssessment history | Learning & Growth | learning-growth-PRD.md | ADR-015 | Beta 0.5 |
 | PAW-LG-010 | Explainable learning and project growth reports | Learning & Growth | learning-growth-PRD.md | ADR-013, ADR-015 | V1.0 |
-| PAW-K-001 | KnowledgeRef and external knowledge references | Knowledge & Context | data-architecture.md | ADR-003, ADR-016 | Alpha 0.2 |
 | PAW-S-004 | Agent authorization, approval, and audit gate | AI Collaboration / System | agent-authorization-model.md | ADR-004 | Alpha 0.2 gate |
 
 ## Verification rules
