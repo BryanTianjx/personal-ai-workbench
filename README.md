@@ -1,12 +1,12 @@
 # 自磨工坊 · 个人智能工作台
 
-**Personal AI Workbench**
-Git repository: `personal-ai-workbench`
+**Personal AI Workbench**  
+Git repository: personal-ai-workbench  
 微信公众号：AI智能体打磨工坊
 
 > 自主构建 · 持续打磨 · 知行合一
 
-自磨工坊是一款面向个人的本地优先**工作与成长平台**，统一组织目标、领域责任、项目、任务、学习、知识上下文、AI Agent、工程活动与内容创作。它负责工作组织、上下文关联、任务协调、权限控制和结果追溯；专业工具负责专业执行。
+自磨工坊是一款面向个人的本地优先工作与成长平台，统一组织目标、领域责任、项目、任务、学习、知识上下文、AI Agent、工程活动与内容创作。它负责工作组织、上下文关联、任务协调、权限控制和结果追溯；专业工具负责专业执行。
 
 ## 产品原则
 
@@ -51,7 +51,9 @@ Git repository: `personal-ai-workbench`
 
 ## 项目状态
 
-**E0.2.2.3 Final Documentation Remediation & Freeze Gate：Completed。** 本次 Learning & Growth 文档变更属于架构基线扩展；不代表学习模块或其他功能已经实现或测试通过。工程实现、双平台构建、离线运行和安全验收仍需按路线图分阶段验证。
+- **E0.2.2.3：** Documentation/design baseline frozen; this does not mean software implementation or runtime verification is complete.
+- **E0.3：** Architecture Consolidation & Engineering Readiness — Proposed, under review on docs/e0.3-architecture-consolidation.
+- **E1：** Engineering skeleton and first Windows vertical slice — not implemented or verified by this documentation change.
 
 ## 文档入口
 
@@ -66,6 +68,8 @@ Git repository: `personal-ai-workbench`
 - [领域架构](docs/02-architecture/domain-architecture.md)
 - [跨领域数据契约](docs/02-architecture/cross-domain-data-contracts.md)
 - [ADR 索引](docs/03-adr/README.md)
+- [E0.3 架构调整方案](docs/05-architecture-evolution/E0.3-architecture-adjustment-plan.md)
+- [E0.3 GitHub 文档变更清单](docs/05-architecture-evolution/E0.3-github-document-change-list.md)
 
 ## 变更治理
 
