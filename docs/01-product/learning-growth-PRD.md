@@ -1,10 +1,10 @@
 # Learning & Growth — 产品需求文档
 
-**产品：** Personal AI Workbench / 自磨工坊  
-**领域：** Learning & Growth  
-**状态：** Accepted domain scope; phased delivery  
-**版本：** 0.1  
-**决策依据：** PAW-ADR-013～016  
+**产品：** Personal AI Workbench / 自磨工坊
+**领域：** Learning & Growth
+**状态：** Accepted domain scope; phased delivery
+**版本：** 0.1
+**决策依据：** PAW-ADR-013～016
 **实现状态：** Not Implemented
 
 ## 1. 产品目标
@@ -22,6 +22,7 @@ Learning & Growth 是个人工作与成长平台中的独立业务域，不是 L
 目标用户为长期开展软件工程、AI Agent、协议工程及系统研发的个人开发者。
 
 典型场景：
+
 1. 制定跨季度技术路线，并拆分为阶段性学习计划。
 2. 将 Rust、Agent Runtime、Durable Execution 等学习项关联 FEMRIX 项目实践。
 3. 将 C/C++、Wi-Fi、3GPP NAS、ASN.1 等学习项关联 ProCodec 工程任务。
