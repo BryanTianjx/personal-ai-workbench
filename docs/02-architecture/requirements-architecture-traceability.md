@@ -32,4 +32,4 @@ The following are architecture decisions and implementation-readiness constraint
 | Durable operation and recovery | ADR-019 | application-architecture.md; data-architecture.md; agent-adapter-architecture.md | restart recovery; indeterminate-submit reconciliation; cancellation tests |
 | Contract/event evolution | ADR-020 | cross-domain-data-contracts.md; data-architecture.md | version fixtures; duplicate delivery; quarantine and migration tests |
 
-All four ADRs remain Proposed pending repository-owner ratification. Their proposed design must not be represented as implemented or verified.
+All four ADRs were ratified as Accepted on 2026-11-08 (E0.3.2). Accepted is a design-decision status; implementation remains Not Implemented and verification Not Verified, and this traceability must not be represented as implemented or verified.

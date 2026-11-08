@@ -1,7 +1,7 @@
 # System Architecture
 
-**Architecture Baseline:** E0.2 + Learning & Growth extension
-**Decision Status:** Accepted design baseline — see ADR-002 through ADR-006 and ADR-013 through ADR-016
+**Architecture Baseline:** E0.2 + Learning & Growth extension; E0.3.2 ratified coordination/operation/contract baseline (2026-11-08)
+**Decision Status:** Accepted design baseline — see ADR-002 through ADR-006, ADR-013 through ADR-016, and ADR-017 through ADR-020
 **Implementation Status:** Not Implemented
 **Verification Status:** Not Verified
 **Applies to:** Alpha 0.1 through V1.0
@@ -87,12 +87,16 @@ The following decisions are part of the current baseline:
 - Learning-to-Project integration uses explicit contracts and events; see ADR-014.
 - Skill assessment is evidence-linked and user-confirmed; see ADR-015.
 - Learning and Knowledge retain separate ownership; see ADR-016.
+- Cross-domain orchestration is a logical Coordination Layer inside paw-application, not a new domain or service; see ADR-017.
+- The Rust workspace starts with four crates (paw-domain, paw-application, paw-infrastructure, paw-desktop) and inward dependencies enforced by automated checks; see ADR-018.
+- Operation is a durable execution envelope with per-attempt records; Task, Workflow Run, Agent Execution and Operation keep separate owners and state machines; see ADR-019.
+- Published cross-domain DTOs and persisted event envelopes are versioned with explicit compatibility, idempotency and quarantine rules; see ADR-020.
 
 Remaining items requiring implementation design or prototype evidence include attachment content-addressing, plugin packaging/distribution, representative SQLite performance, and the future multi-device synchronization protocol. None of the above decisions implies implementation or verification is complete.
 
 ## 9. E0.3 coordination and execution model
 
-E0.3 proposes a logical Coordination Layer inside the Application Layer. It is not a ninth business domain, a separate process, or a deployment tier. It owns cross-cutting orchestration mechanics only: operation/correlation context, named cross-domain use-case coordination, authorization invocation, local transaction coordination, Outbox dispatch, retry classification, cancellation, reconciliation, and recovery.
+E0.3 (ratified 2026-11-08 via E0.3.2) establishes a logical Coordination Layer inside the Application Layer. It is not a ninth business domain, a separate process, or a deployment tier. It owns cross-cutting orchestration mechanics only: operation/correlation context, named cross-domain use-case coordination, authorization invocation, local transaction coordination, Outbox dispatch, retry classification, cancellation, reconciliation, and recovery.
 
 The owning business domain remains authoritative for its entities and invariants. The Coordination Layer must not expose private repositories, own business records, or become a generic service locator. Cross-domain flows use published application contracts. External/provider calls occur outside SQLite transactions.
 
@@ -115,4 +119,4 @@ The initial workspace is intentionally small: `paw-domain`, `paw-application`, `
 
 ## 10. E0.3 review disposition
 
-ADR-017–020 are recommended for acceptance as design decisions with the clarifications recorded in their E0.3.1 review notes. They remain Proposed until explicit repository-owner ratification. Implementation and verification remain Not Implemented and Not Verified.
+ADR-017–020 were ratified as Accepted on 2026-11-08 through the repository owner's E0.3.2 direction. The E0.3.1 clarifications are normative and form part of each decision. Accepted establishes the design baseline only; implementation and verification remain Not Implemented and Not Verified.
