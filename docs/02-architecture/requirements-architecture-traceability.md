@@ -16,6 +16,10 @@
 | PAW-LG-009 | User-confirmed LearningAssessment history | Learning & Growth | learning-growth-PRD.md | ADR-015 | Beta 0.5 |
 | PAW-LG-010 | Explainable learning and project growth reports | Learning & Growth | learning-growth-PRD.md | ADR-013, ADR-015 | V1.0 |
 | PAW-S-004 | Agent authorization, approval, and audit gate | AI Collaboration / System | agent-authorization-model.md | ADR-004 | Alpha 0.2 gate |
+| PAW-INF-001 | Cross-domain coordination boundary (named use cases, no private repositories, re-authorization per side effect) | Cross-cutting (paw-application) | application-architecture.md; system-architecture.md | ADR-017 | E2/E3 |
+| PAW-INF-002 | Rust workspace dependency direction and enforced forbidden edges | Cross-cutting (workspace) | module-boundary-rules.md; E1-rust-workspace-layout.md | ADR-018 | E1 |
+| PAW-INF-003 | Durable Operation/OperationAttempt persistence, restart recovery, unsafe-retry blocking | Cross-cutting (paw-application/infrastructure) | E0.3.2-engineering-specification.md; data-architecture.md | ADR-019 | E1/E3 |
+| PAW-INF-004 | Contract/event versioning, idempotent consumption, poison-message quarantine | Cross-cutting (published contracts) | cross-domain-data-contracts.md; E0.3.2-engineering-specification.md | ADR-020 | E3/E4 |
 
 ## Verification rules
 
@@ -23,7 +27,7 @@ A design link is not implementation evidence. Each requirement must later identi
 
 ## E0.3 architecture decision traceability
 
-The following are architecture decisions and implementation-readiness constraints, not new product requirement IDs. They therefore do not alter the formal requirements baseline or the one-to-one ID-set validation.
+As of the E0.3 post-ratification governance pass (2026-11-08), the four E0.3 architecture concerns are additionally tracked as infrastructure requirements PAW-INF-001～004 in `requirements-baseline.md` §4. This supersedes the earlier position that these concerns carried no formal requirement IDs. The ADRs remain the governing source: each PAW-INF requirement's acceptance basis is the Validation required section of its ADR, and the one-to-one ID-set validation between the requirements baseline and this traceability table applies to PAW-INF as to every other ID.
 
 | Architecture concern | Decision record | Design location | Required future evidence |
 |---|---|---|---|

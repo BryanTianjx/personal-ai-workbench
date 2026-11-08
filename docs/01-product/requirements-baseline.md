@@ -34,11 +34,22 @@
 | PAW-K-001～002 | KnowledgeRef、Lingshu/Hindsight 连接器 | Alpha 0.2+ | 引用权限、来源失效和降级正确 |
 | PAW-S-004 | Agent 授权、审批与审计机制 | Alpha 0.2 前置门禁 | 默认拒绝、最小权限、审批绑定、审计测试 |
 
-## 4. P2 需求
+## 4. 基础设施需求（ADR 派生）
+
+以下需求由 E0.3 批准后的治理补全引入，用于把 ADR-017～020 的验证要求纳入可追踪基线。它们是架构派生的基础设施需求，不是产品功能需求：不扩大 Alpha 0.1 的产品范围，目标版本按 E 阶段（ADR-021）归属，验收依据为对应 ADR 的 Validation required 小节，ADR 始终是治理源头。
+
+| ID | 需求 | 治理 ADR | 目标版本 | 验收依据 |
+|---|---|---|---|---|
+| PAW-INF-001 | 跨域协调边界：仅命名用例协调、不暴露私有仓储、业务不变量留在属主域、每次受保护副作用前重新授权 | ADR-017 | E2/E3 | ADR-017 Validation required |
+| PAW-INF-002 | Rust workspace 依赖方向向内、禁止边由自动化架构检查强制（目录约定不充分） | ADR-018 | E1 | ADR-018 Validation required |
+| PAW-INF-003 | Operation/OperationAttempt 持久化、进程重启恢复、OutcomeUnknown 阻断非幂等重试、状态机不与 Task/Workflow Run/Agent Execution 混用 | ADR-019 | E1/E3 | ADR-019 Validation required |
+| PAW-INF-004 | 跨域契约/事件版本化、at-least-once 投递与消费幂等、未知版本隔离、毒消息有界重试 | ADR-020 | E3/E4 | ADR-020 Validation required |
+
+## 5. P2 需求
 
 多设备同步和冲突解决、独立 Web Server、可视化工作流编辑器、多 Agent 团队协作、知识图谱、AI 自动学习建议和自动调整计划。
 
-## 5. Learning 安全与质量约束
+## 6. Learning 安全与质量约束
 
 - 初始 Skill 不得预置未经用户确认的 proficiency。
 - Session 时长、Item 完成率、课程完成状态不能作为能力等级的自动证明。
@@ -47,14 +58,16 @@
 - 所有跨域引用必须验证 Workspace 一致性与访问权限。
 - Assessment 历史保留；更正通过新记录或明确修订流程完成。
 
-## 6. Agent 安全前置门禁
+## 7. Agent 安全前置门禁
 
 PAW-S-004 不属于 Alpha 0.1 的 Agent 功能交付承诺。Alpha 0.1 必须完成授权模型、接口边界和测试规范的设计；Agent 外部执行保持关闭。Alpha 0.2 中，只有在默认拒绝、最小权限、资源范围校验、人工审批绑定执行计划、审计记录及相应自动化测试均实现并通过验收后，才可启用 Agent 执行。
 
-## 7. 追踪规则
+## 8. 追踪规则
 
 每条需求应关联 PRD 章节、设计/架构文档、实现模块或任务 ID、自动化测试或人工验收用例、当前状态与证据。状态统一为 proposed、approved、implemented、verified、deferred、rejected。未经测试不得标记 verified。
 
-## 8. 冻结规则
+PAW-INF 系列需求的追踪对象是对应 ADR 及其 Validation required 小节；实现与验证状态随 E 阶段门禁（ADR-021）记录，与 `requirements-architecture-traceability.md` 的架构追踪表一一对应。
+
+## 9. 冻结规则
 
 需求冻结后，变更必须记录原因、用户价值、影响模块、数据迁移、安全和平台影响、验收标准及目标版本。P0 变更需要重新评审发布范围。
