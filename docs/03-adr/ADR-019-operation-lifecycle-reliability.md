@@ -1,6 +1,6 @@
 # ADR-019: Durable Operation Lifecycle and Reliability Semantics
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-08
 - **Decision scope:** Long-running operation state, retries, cancellation, and recovery
 - **Implementation Status:** Not Implemented
@@ -56,6 +56,10 @@ Process restart recovery; timeout-after-submit and duplicate-submit tests; suppo
 ## Revisit when
 
 A proven durable execution engine is adopted or operation complexity exceeds the local implementation. Authorization, audit, and ownership semantics must be preserved.
+
+## E0.3.2 ratification
+
+**Decision:** Accepted on 2026-11-08 as part of the repository owner's E0.3.2 direction. The E0.3.1 clarifications are normative and form part of this decision. Acceptance establishes the design baseline only; implementation remains Not Implemented and verification remains Not Verified.
 
 ## E0.3.1 review outcome
 
