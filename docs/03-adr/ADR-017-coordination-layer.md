@@ -1,6 +1,6 @@
 # ADR-017: Coordination Layer for Cross-Domain Operations
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-08
 - **Decision scope:** Application coordination and cross-domain execution
 - **Implementation Status:** Not Implemented
@@ -54,6 +54,10 @@ Cross-domain use-case tests; transaction rollback and Outbox atomicity; duplicat
 ## Revisit when
 
 A separate service is justified by independent deployment, scaling, or operational ownership evidence. A superseding ADR and server/runtime design are required.
+
+## E0.3.2 ratification
+
+**Decision:** Accepted on 2026-11-08 as part of the repository owner's E0.3.2 direction. The E0.3.1 clarifications are normative and form part of this decision. Acceptance establishes the design baseline only; implementation remains Not Implemented and verification remains Not Verified.
 
 ## E0.3.1 review outcome
 
