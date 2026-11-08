@@ -1,9 +1,9 @@
 # 产品需求文档（PRD）1.0
 
-**产品：** 自磨工坊 · 个人智能工作台  
-**英文描述：** Personal AI Workbench  
-**状态：** Accepted architecture/product baseline; implementation is phased  
-**版本：** 0.2.0  
+**产品：** 自磨工坊 · 个人智能工作台
+**英文描述：** Personal AI Workbench
+**状态：** Accepted architecture/product baseline; implementation is phased
+**版本：** 0.2.0
 **目标平台：** Windows-first，跨平台架构预留（Windows/macOS）
 
 ## 1. 产品概述
@@ -11,6 +11,7 @@
 自磨工坊是一款本地优先的个人工作与成长平台，统一组织个人目标、责任领域、项目、任务、学习、知识上下文、AI Agent、工程活动和内容创作。它负责工作组织、上下文关联、任务协调、权限控制和结果追溯；专业工具负责专业执行。
 
 核心工作模型为 **Goal + Area + Project + Task**：
+
 - Goal：用户希望达成的长期或阶段性结果。
 - Area：需要持续维护的责任领域。
 - Project：有明确目标、范围、状态和成果的工作单元。
@@ -21,6 +22,7 @@
 ## 2. 用户与核心场景
 
 首要用户为需要管理复杂个人知识工作、软件工程项目和 AI 辅助任务的个人专业用户。关键场景：
+
 - 管理目标、持续责任领域、项目和任务。
 - 将学习路线和学习计划与自研项目结合。
 - 记录学习活动，并将实验、测试、代码、文档和交付物作为技能证据。
@@ -68,18 +70,21 @@ Dashboard 是跨领域只读汇总，不拥有权威业务记录。
 ## 4. 功能需求
 
 ### 4.1 Dashboard
+
 - 展示真实目标、项目、任务、学习计划、Agent 和系统状态。
 - 支持从汇总项进入对应业务对象。
 - 区分计划进度、学习活动、技能评估和项目交付，不将它们合并为单一虚构分数。
 - 明确区分本地状态、远程连接状态和数据更新时间。
 
 ### 4.2 Work Management
+
 - 创建和切换 Workspace。
 - 管理 Goal、Area、Project、Task。
 - Project 可关联 Goal/Area；Task 可关联 Project；允许无项目 Task。
 - 记录创建、更新时间和必要的状态变更。
 
 ### 4.3 Learning & Growth
+
 - Alpha 0.1：只预留领域边界、稳定 ID 和通用关联扩展点；不交付完整学习中心。
 - Alpha 0.2：Roadmap、Plan、Item、Session 基础生命周期；与 Project、Task、KnowledgeRef、Artifact 关联。
 - Beta 0.5：Skill Matrix、Skill Evidence、用户确认的 Assessment；项目学习缺口反馈闭环。
@@ -88,6 +93,7 @@ Dashboard 是跨领域只读汇总，不拥有权威业务记录。
 - Agent 生成的学习建议必须由用户确认后成为正式计划。
 
 ### 4.4 AI Collaboration
+
 - 定义供应商无关的 Agent Adapter 契约。
 - 展示适配器连接状态和能力声明。
 - 记录 Agent 任务、执行状态、时间和结果引用。
@@ -96,18 +102,21 @@ Dashboard 是跨领域只读汇总，不拥有权威业务记录。
 - 高风险操作必须经过权限检查和人工审批。
 
 ### 4.5 Knowledge & Context
+
 - Alpha 0.1：支持本地附件/文件管理及项目、任务的本地搜索；仅预留知识引用入口。
 - Alpha 0.2：引入正式 KnowledgeRef 模型，支持外部知识资产引用及来源、标识、标题、位置、版本/更新时间和可用状态等元数据。
 - 外部知识服务不可用时保留引用记录并提示状态。
 - 不未经授权复制、覆盖或删除外部知识库原始数据。
 
 ### 4.6 Engineering
+
 - 项目可关联本地代码目录和 Git 仓库标识。
 - Artifact 可被学习记录引用为实践或评估证据。
 - 首期不替代 IDE、Git 客户端或 CI 平台。
 
 ### 4.7 Creator
 目标公众号：**AI智能体打磨工坊**。内容生命周期：选题 → 研究素材 → 文章草稿 → 版本修订 → 审核 → 人工确认 → 发布/人工发布 → 运营记录。
+
 - 管理选题状态、栏目、优先级和关联项目。
 - 管理文章草稿、版本和附件。
 - 保存内容来源、引用和 Evidence Status。
