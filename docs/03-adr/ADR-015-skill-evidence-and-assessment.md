@@ -3,8 +3,10 @@
 - **Status:** Accepted
 - **Decision date:** 2026-11-08
 - **Decision scope:** Beta 0.5 onward; schema extension points may be reserved earlier
+
 Implementation Status: Not Implemented
 Verification Status: Not Verified
+
 - **Related:** ADR-013, ADR-014, ADR-016
 
 ## Context
@@ -20,6 +22,7 @@ A workspace-scoped competency definition with a stable ID, name, description, op
 
 ### SkillEvidence
 A traceable association between a Skill and one or more evidence references. Evidence kinds include:
+
 - `concept_explanation`
 - `guided_exercise`
 - `experiment`
