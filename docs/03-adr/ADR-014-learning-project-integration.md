@@ -3,8 +3,8 @@
 - **Status:** Accepted
 - **Decision date:** 2026-11-08
 - **Decision scope:** Alpha 0.1 through V1.0
-- **Implementation status:** Not Implemented
-- **Verification status:** Not Verified
+Implementation Status: Not Implemented
+Verification Status: Not Verified
 - **Related:** ADR-013, ADR-015, ADR-016
 
 ## Context
@@ -49,3 +49,14 @@ Use **loose, identifier-based, event-assisted integration**.
 ## Verification requirements
 
 Test workspace isolation, duplicate event delivery, project archive/detach behavior, task creation through the owning command, and preservation of Learning records when a Project is archived or removed.
+
+
+## Risks
+
+- Cross-domain coupling could grow if consumers bypass published contracts; enforce ownership through module visibility and contract tests.
+- Evidence quality or assessment semantics may be misunderstood; keep user confirmation and provenance visible.
+
+## Validation
+
+- Validate workspace isolation, reference authorization, lifecycle behavior, and idempotent event consumption.
+- Keep implementation and verification marked as pending until corresponding code and repeatable tests exist.
