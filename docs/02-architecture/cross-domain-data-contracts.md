@@ -1,9 +1,9 @@
 # Cross-Domain Data Contracts
 
-**Baseline:** E0.2 + Learning & Growth extension  
-**Status:** Accepted design contract  
-**Implementation:** Not Implemented  
-**Verification:** Not Verified  
+**Baseline:** E0.2 + Learning & Growth extension
+**Status:** Accepted design contract
+**Implementation:** Not Implemented
+**Verification:** Not Verified
 **Related ADRs:** ADR-013, ADR-014, ADR-015, ADR-016
 
 ## 1. Purpose
@@ -42,6 +42,7 @@ A domain is the sole authoritative writer of its records. A reference does not t
 ```
 
 Rules:
+
 - IDs are opaque and stable; names, paths, URLs, and titles are not primary keys.
 - `workspace_id` is mandatory for workspace-scoped records.
 - Source domain validates the referenced object and workspace.
@@ -53,6 +54,7 @@ Rules:
 ## 4. Learning-specific association contract
 
 Learning may associate to:
+
 - `Project` with relationship `applies_to` or `practice_context`.
 - `Task` with relationship `action_step`.
 - `Note` with relationship `reflection` or `learning_note`.
@@ -61,6 +63,7 @@ Learning may associate to:
 - `Skill` with relationship `develops` or `demonstrates`.
 
 Association cardinality:
+
 - Learning Plan ↔ Project: many-to-many.
 - Learning Item ↔ Project: many-to-many.
 - Learning Item → Task: zero or many action-step references; Task remains Work Management-owned.
@@ -73,6 +76,7 @@ All relationships must be workspace-consistent. Cross-workspace association is r
 ## 5. Commands and queries
 
 Cross-domain writes use the source domain's published command:
+
 - `CreateTaskForLearningItem` is a Work Management command requested by Learning.
 - `ProposeLearningNeedFromProject` is a Learning application command invoked from a Project review interaction or event consumer.
 - `AttachArtifactAsSkillEvidence` is a Learning command after Engineering/Knowledge confirms the Artifact reference.
@@ -132,6 +136,7 @@ Delivery semantics are at-least-once. Consumers must deduplicate by `event_id`, 
 ## 9. SQLite mapping guidance
 
 For workspace-scoped tables:
+
 - Include `workspace_id NOT NULL`.
 - Use composite foreign keys or equivalent repository validation to prevent cross-workspace links.
 - Index common association lookups by `(workspace_id, target_id)` and `(workspace_id, source_id)`.
