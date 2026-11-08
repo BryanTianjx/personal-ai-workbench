@@ -3,8 +3,10 @@
 - **Status:** Accepted
 - **Decision date:** 2026-11-08
 - **Decision scope:** Alpha 0.1 through V1.0
+
 Implementation Status: Not Implemented
 Verification Status: Not Verified
+
 - **Related:** ADR-003, ADR-013, ADR-015
 
 ## Context
@@ -16,16 +18,19 @@ Learning activities depend on books, standards, articles, notes, code, experimen
 Separate **learning process ownership** from **knowledge asset ownership**.
 
 Learning & Growth owns:
+
 - What the user intends to learn.
 - Learning plans, objectives, sessions, reflections, and assessments.
 - The relationship between learning outcomes and competency evidence.
 
 Knowledge & Context owns:
+
 - Local notes and work-context records.
 - KnowledgeRef metadata and external source references.
 - Permitted local indexing/projection metadata and source freshness state.
 
 External systems retain authority over their own canonical content:
+
 - Lingshu Knowledge remains the curated knowledge repository.
 - Hindsight remains an Agent memory service.
 - Protocol standards and source documents remain in their authoritative repositories.
