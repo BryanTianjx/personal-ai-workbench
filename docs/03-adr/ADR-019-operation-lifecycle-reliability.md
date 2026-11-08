@@ -18,6 +18,7 @@ Introduce a cross-cutting Operation record for durable execution bookkeeping. Op
 Minimum metadata: operation ID, kind, owner/domain and owning record ID, workspace ID when scoped, status, timestamps, correlation/causation IDs, attempt and retry classification, cancellation state, safe diagnostic category, and references to approvals, Outbox messages, external execution IDs, and produced artifacts.
 
 Required semantics:
+
 - Persist state transitions before presenting durable progress.
 - Use explicit states such as Pending, Running, AwaitingApproval, RetryScheduled, Succeeded, Failed, Cancelled, and OutcomeUnknown.
 - Do not reuse one enum across Task, Workflow Run, Agent Execution, and Operation.
@@ -61,6 +62,7 @@ A proven durable execution engine is adopted or operation complexity exceeds the
 **Disposition:** Recommended for acceptance with clarification. **Status remains Proposed pending repository-owner ratification.**
 
 Clarifications:
+
 - Operation is a durable execution envelope. It references its owning domain record and never mirrors the owner's business status.
 - Record individual OperationAttempt entries for side-effecting attempts, including request/plan digest, idempotency key when supported, external execution reference, timing, and outcome classification.
 - Keep Task, Workflow Run, Agent Execution, Operation and Audit Event as separate objects with separate owners.

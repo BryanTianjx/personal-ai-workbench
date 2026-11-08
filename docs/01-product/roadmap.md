@@ -60,6 +60,7 @@ Tauri shell → React view → typed Tauri command → Rust application use case
 ### E0.3.1 — ADR Review & Consolidation
 
 评审结论建议：
+
 - ADR-017：建议接受；Coordination 是 paw-application 内的逻辑能力，不是新业务域或独立服务。
 - ADR-018：建议接受；初始四 crate，发布的应用 DTO/Ports 属于 paw-application，领域事件与不变量属于 paw-domain。
 - ADR-019：建议接受；Operation 作为执行信封，OperationAttempt 记录单次副作用尝试；Task/Workflow Run/Agent Execution 各自保留生命周期。
