@@ -76,12 +76,14 @@ paw-desktop ───────► paw-application ───────► pa
 ```
 
 Allowed direct dependencies:
+
 - paw-domain: standard library and narrowly selected pure utility crates only. No SQL, Tauri, filesystem/OS APIs, network clients, provider SDKs, or application crate.
 - paw-application: paw-domain; serialization/validation primitives where they do not leak infrastructure types. Defines ports and published application contracts.
 - paw-infrastructure: paw-application (implements its ports) and paw-domain. Contains SQLx/rusqlite choice, filesystem and provider SDK details.
 - paw-desktop: paw-application and paw-infrastructure. It is the only composition root and Tauri command/event boundary.
 
 Forbidden:
+
 - paw-domain → any other PAW crate.
 - paw-application → paw-infrastructure or paw-desktop.
 - paw-infrastructure → paw-desktop.
@@ -115,6 +117,7 @@ The Coordination Layer is a module in paw-application, not a fifth crate. Domain
 ## 5. Automated enforcement
 
 E1 must include:
+
 1. `cargo metadata --no-deps --format-version 1` dependency inspection.
 2. A repository architecture test/script that fails on forbidden crate edges.
 3. A source scan preventing Tauri/SQL/provider imports in paw-domain.

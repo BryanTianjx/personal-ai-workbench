@@ -33,6 +33,7 @@ E1-07 and E1-08 may be implemented behind internal interfaces and need not be ex
 ## 3. AI Agent work-unit protocol
 
 Each AI agent receives one bounded work unit with:
+
 - Goal and explicit non-goals.
 - Allowed paths and forbidden paths.
 - Input ADR/specification versions and exact base commit.
@@ -43,6 +44,7 @@ Each AI agent receives one bounded work unit with:
 - Stop conditions and unresolved questions.
 
 Agents must:
+
 1. Inspect current repository state before editing.
 2. Work only on assigned paths; do not change unrelated files or broaden scope.
 3. Never change accepted ADRs or security policy without explicit owner approval.
@@ -77,33 +79,39 @@ One person may run multiple roles sequentially. Parallel work is permitted only 
 ## 6. Quality gates
 
 **Gate A — Architecture**
+
 - Cargo dependency graph matches ADR-018.
 - No forbidden imports or direct UI-to-database access.
 - Public cross-domain DTO/event contracts have explicit versions.
 
 **Gate B — Persistence**
+
 - Migrations deterministic, transactional and checksum-verified.
 - Foreign keys enabled on every connection.
 - Upgrade fixture, interrupted migration and backup/restore tests pass.
 
 **Gate C — Security**
+
 - Workspace isolation enforced in service, repository predicates and database constraints.
 - Authorization rechecked before each protected side effect.
 - Logs, events and errors contain no credentials, prompts or full document bodies.
 
 **Gate D — Reliability**
+
 - Outbox persisted atomically with source state.
 - Duplicate delivery is harmless.
 - OutcomeUnknown blocks unsafe retry until reconcile/resolution.
 - Cancellation is not represented as proof of remote stop.
 
 **Gate E — Product**
+
 - Windows native app launches.
 - User can create Workspace and Project.
 - Restart restores data.
 - Offline operation succeeds without network dependency.
 
 **Gate F — Evidence**
+
 - CI green on the exact candidate commit.
 - Test report records OS, toolchain, command, result and artifact.
 - Requirement/ADR traceability updated.

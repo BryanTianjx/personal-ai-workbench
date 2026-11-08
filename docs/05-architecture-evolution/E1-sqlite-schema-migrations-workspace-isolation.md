@@ -173,6 +173,7 @@ If SQLite is built without JSON1, replace `json_valid` with application-side str
 Every repository method that reads or mutates a workspace-owned row requires an explicit WorkspaceId parameter. Do not expose unscoped `get_by_id(id)` methods for workspace-owned records.
 
 Required rules:
+
 - Resolve active workspace from trusted application context; never trust a workspace ID supplied only by the UI.
 - Authorize actor + capability + workspace + resource before each protected side effect.
 - Include workspace_id in predicates even when a globally unique ID is supplied.

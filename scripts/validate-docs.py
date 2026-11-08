@@ -125,7 +125,7 @@ def main() -> int:
         print("ERROR: docs/ directory not found", file=sys.stderr)
         return 2
 
-    markdown = sorted(p for p in ROOT.rglob("*.md") if ".git" not in p.parts)
+    markdown = sorted(p for p in ROOT.rglob("*.md") if not any(part.startswith(".") for part in p.parts))
     if args.fix_format:
         for path in markdown:
             original = path.read_text(encoding="utf-8")
