@@ -1,8 +1,8 @@
 # Data Architecture
 
-**Architecture Baseline:** E0.2 + Learning & Growth extension  
-**Decision Status:** Accepted — see ADR-003, ADR-006, ADR-013～016  
-**Implementation Status:** Not Implemented  
+**Architecture Baseline:** E0.2 + Learning & Growth extension
+**Decision Status:** Accepted — see ADR-003, ADR-006, ADR-013～016
+**Implementation Status:** Not Implemented
 **Verification Status:** Not Verified
 
 ## 1. Ownership
