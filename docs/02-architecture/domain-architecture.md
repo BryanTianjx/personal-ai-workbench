@@ -1,8 +1,8 @@
 # Domain Architecture
 
-**Architecture Baseline:** E0.2 + Learning & Growth extension  
-**Decision Status:** Accepted design rules (ADR-001～016)  
-**Implementation Status:** Not Implemented  
+**Architecture Baseline:** E0.2 + Learning & Growth extension
+**Decision Status:** Accepted design rules (ADR-001～016)
+**Implementation Status:** Not Implemented
 **Verification Status:** Not Verified
 
 ## 1. Domain map
