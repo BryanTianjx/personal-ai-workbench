@@ -36,6 +36,13 @@ The following is a design reference. Production migrations must be reviewed agai
 ```sql
 PRAGMA foreign_keys = ON;
 
+CREATE TABLE schema_migrations (
+    version         INTEGER PRIMARY KEY,
+    name            TEXT NOT NULL,
+    checksum        TEXT NOT NULL,
+    applied_at      INTEGER NOT NULL
+);
+
 CREATE TABLE workspaces (
     id              TEXT PRIMARY KEY,
     name            TEXT NOT NULL CHECK (length(trim(name)) BETWEEN 1 AND 120),
@@ -93,6 +100,9 @@ CREATE INDEX idx_operations_due
     WHERE status = 'RetryScheduled';
 CREATE INDEX idx_operations_owner
     ON operations(owner_domain, owner_type, owner_id);
+CREATE UNIQUE INDEX idx_operations_idempotency
+    ON operations(COALESCE(workspace_id, '__system__'), kind, idempotency_key)
+    WHERE idempotency_key IS NOT NULL;
 
 CREATE TABLE operation_attempts (
     id                  TEXT PRIMARY KEY,
