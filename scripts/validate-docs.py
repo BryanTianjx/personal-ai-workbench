@@ -161,7 +161,7 @@ def main() -> int:
         indexed.add(adr_id)
     adr_files = sorted(DOCS.joinpath("03-adr").glob("ADR-[0-9][0-9][0-9]-*.md"))
     actual = {p.stem.split("-", 2)[1] for p in adr_files}
-    expected = {f"{i:03d}" for i in range(1, 7)}
+    expected = {f"{i:03d}" for i in range(1, 7)} | {f"{i:03d}" for i in range(13, 17)}
     if actual != expected:
         errors.append(f"ADR file set mismatch: expected={sorted(expected)}, actual={sorted(actual)}")
     if indexed != {f"ADR-{n}" for n in expected}:
