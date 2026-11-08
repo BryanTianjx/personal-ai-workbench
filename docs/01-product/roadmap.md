@@ -20,6 +20,8 @@ Windows 桌面应用（Windows-only 交付与验收，macOS 见 ADR-021）；Goa
 
 统一 Agent Adapter 契约；Agent 注册和受控执行（通过安全门禁后）；KnowledgeRef；Lingshu/Hindsight 连接器评估与实现；Learning Roadmap、Plan、Item、Session 基础生命周期；Learning 与 Project/Task/KnowledgeRef/Artifact 的契约关联。
 
+**前置门禁：** 外部 Agent 执行启用前，[ADR-022](../03-adr/ADR-022-workbench-hermes-boundary.md)（Workbench ↔ Hermes 边界）必须先批准为 Accepted。
+
 ## Beta 0.5 — 内容生产与项目实践成长
 
 微信公众号内容流程；Skill Matrix、SkillEvidence、用户确认的 LearningAssessment；项目提出学习缺口、用户确认后转化为学习计划；学习产物回流项目复盘。微信官方接口经验证后再启用自动化发布能力。
@@ -53,7 +55,7 @@ Windows 桌面应用（Windows-only 交付与验收，macOS 见 ADR-021）；Goa
 - Gate E0：PRD、需求追踪、架构和验收基线通过评审。
 - Gate E0.3：Coordination、模块边界、Operation 可靠性、契约版本和 E1 验收方案通过架构评审；ADR-017～020 已批准。
 - Gate Alpha 0.1（阶段 E1–E3）：Windows 原生构建、安装、启动；完全离线核心闭环；重启持久化；备份恢复；迁移与 Workspace 隔离测试通过。
-- Gate Alpha 0.2（阶段 E4–E5）：Agent/知识/学习集成权限、关联与失败降级通过。
+- Gate Alpha 0.2（阶段 E4–E5）：Agent/知识/学习集成权限、关联与失败降级通过；外部 Agent 执行启用以 ADR-022 批准为前置。
 - Gate Beta 0.5（阶段 E6.x）：内容流程、审核、发布辅助和证据化评估按增量通过。
 - 发布门禁（V1.0）：Windows 安装、升级、恢复、安全和发布检查通过；macOS 在其 readiness 里程碑独立完成原生验收。
 

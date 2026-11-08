@@ -121,3 +121,5 @@ The initial workspace is intentionally small: `paw-domain`, `paw-application`, `
 ## 10. E0.3 review disposition
 
 ADR-017–020 were ratified as Accepted on 2026-11-08 through the repository owner's E0.3.2 direction. The E0.3.1 clarifications are normative and form part of each decision. Accepted establishes the design baseline only; implementation and verification remain Not Implemented and Not Verified.
+
+Open items: [ADR-021](../03-adr/ADR-021-stage-version-mapping-windows-only-alpha.md) fixes the stage-to-version mapping and Windows-only Alpha 0.1 delivery. [ADR-022](../03-adr/ADR-022-workbench-hermes-boundary.md) (Workbench ↔ Hermes execution boundary) is Proposed and must be ratified before Alpha 0.2 enables external Agent execution.

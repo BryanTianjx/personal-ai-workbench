@@ -23,7 +23,7 @@ ADR_LINK = re.compile(r"\[(ADR-[0-9]{3})\]\(([^)]+)\)")
 EXPECTED_ADR_NUMBERS = (
     {f"{i:03d}" for i in range(1, 7)}
     | {f"{i:03d}" for i in range(13, 17)}
-    | {f"{i:03d}" for i in range(17, 22)}
+    | {f"{i:03d}" for i in range(17, 23)}
 )
 
 
