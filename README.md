@@ -1,7 +1,7 @@
 # 自磨工坊 · 个人智能工作台
 
-**Personal AI Workbench**  
-Git repository: `personal-ai-workbench`  
+**Personal AI Workbench**
+Git repository: `personal-ai-workbench`
 微信公众号：AI智能体打磨工坊
 
 > 自主构建 · 持续打磨 · 知行合一
