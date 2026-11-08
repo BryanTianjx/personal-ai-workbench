@@ -34,17 +34,63 @@ pub struct ParseError(String);
 
 impl std::fmt::Display for ParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "invalid workspace identifier: {}", self.0)
+        write!(f, "invalid identifier: {}", self.0)
     }
 }
 
 impl std::error::Error for ParseError {}
+
+/// Domain invariant violation for entity construction. Business invariants
+/// live in the owning domain module (ADR-017); the persistence layer's CHECK
+/// constraints mirror the same limits.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ValidationError {
+    /// A required name was empty or whitespace-only after trimming.
+    EmptyName,
+    /// A name exceeded its domain limit (`max`) after trimming.
+    NameTooLong { max: usize },
+}
+
+impl std::fmt::Display for ValidationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::EmptyName => write!(f, "name must not be empty"),
+            Self::NameTooLong { max } => write!(f, "name exceeds {max} characters"),
+        }
+    }
+}
+
+impl std::error::Error for ValidationError {}
+
+fn validate_name(name: &str, max: usize) -> Result<String, ValidationError> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err(ValidationError::EmptyName);
+    }
+    // The SQLite CHECK uses length(trim(name)); SQLite's length() counts
+    // characters for text values, so `chars().count()` mirrors it exactly.
+    if trimmed.chars().count() > max {
+        return Err(ValidationError::NameTooLong { max });
+    }
+    Ok(trimmed.to_string())
+}
 
 /// A workspace is the top-level tenancy boundary for the workbench.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Workspace {
     pub id: WorkspaceId,
     pub name: String,
+}
+
+impl Workspace {
+    /// Construct a validated workspace: trims the name and enforces the
+    /// 1..=120 character invariant mirrored by the database CHECK.
+    pub fn new(id: WorkspaceId, name: &str) -> Result<Self, ValidationError> {
+        Ok(Self {
+            id,
+            name: validate_name(name, 120)?,
+        })
+    }
 }
 
 /// A project lives inside exactly one workspace.
@@ -74,5 +120,21 @@ impl ProjectId {
 
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+}
+
+impl Project {
+    /// Construct a validated project: trims the name and enforces the
+    /// 1..=200 character invariant mirrored by the database CHECK.
+    pub fn new(
+        id: ProjectId,
+        workspace_id: WorkspaceId,
+        name: &str,
+    ) -> Result<Self, ValidationError> {
+        Ok(Self {
+            id,
+            workspace_id,
+            name: validate_name(name, 200)?,
+        })
     }
 }
