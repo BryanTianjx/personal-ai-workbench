@@ -3,8 +3,10 @@
 - **Status:** Accepted
 - **Decision date:** 2026-11-08
 - **Decision scope:** Alpha 0.1 through V1.0
+
 Implementation Status: Not Implemented
 Verification Status: Not Verified
+
 - **Related:** ADR-002, ADR-003, ADR-006, ADR-007, ADR-014, ADR-015, ADR-016
 
 ## Context
@@ -26,6 +28,7 @@ Putting all learning records inside Task would conflate the intent to learn with
 Introduce **Learning & Growth** as an independent business domain.
 
 The domain owns:
+
 - Learning Roadmaps and Learning Plans.
 - Learning Items and Learning Sessions.
 - Skills and user-confirmed proficiency assessments.
@@ -33,6 +36,7 @@ The domain owns:
 - Learning progress and learning-specific review state.
 
 The domain does not own:
+
 - General-purpose tasks or project lifecycle.
 - Source documents, notes, external knowledge assets, or their canonical content.
 - Code repositories, engineering artifacts, or Agent execution internals.
@@ -55,12 +59,14 @@ A learning record may be associated with zero or more Projects. A Project may be
 ## Consequences
 
 ### Positive
+
 - Learning becomes a durable first-class capability rather than a note/task convention.
 - Project-driven learning gaps can be captured without making Project depend on Learning internals.
 - Skill claims can be tied to evidence and explicit assessment.
 - The product can support personal growth without replacing a curated knowledge base.
 
 ### Trade-offs
+
 - Adds domain concepts, associations, migrations, and UI complexity.
 - Requires explicit cross-domain contracts and lifecycle semantics.
 - Full Learning Center delivery must be phased to avoid expanding Alpha 0.1.
