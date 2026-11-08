@@ -1,6 +1,6 @@
 # ADR-018: Rust Workspace and Enforceable Module Boundaries
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-08
 - **Decision scope:** Rust code organization and dependency direction
 - **Implementation Status:** Not Implemented
@@ -56,6 +56,10 @@ Cargo workspace builds on Windows; domain tests run without Tauri/database depen
 ## Revisit when
 
 A domain needs independent distribution/deployment or a stable independent build boundary that outweighs crate overhead.
+
+## E0.3.2 ratification
+
+**Decision:** Accepted on 2026-11-08 as part of the repository owner's E0.3.2 direction. The E0.3.1 clarifications are normative and form part of this decision. Acceptance establishes the design baseline only; implementation remains Not Implemented and verification remains Not Verified.
 
 ## E0.3.1 review outcome
 
