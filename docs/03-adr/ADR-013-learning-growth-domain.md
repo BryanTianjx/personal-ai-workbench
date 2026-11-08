@@ -3,8 +3,8 @@
 - **Status:** Accepted
 - **Decision date:** 2026-11-08
 - **Decision scope:** Alpha 0.1 through V1.0
-- **Implementation status:** Not Implemented
-- **Verification status:** Not Verified
+Implementation Status: Not Implemented
+Verification Status: Not Verified
 - **Related:** ADR-002, ADR-003, ADR-006, ADR-007, ADR-014, ADR-015, ADR-016
 
 ## Context
@@ -79,3 +79,14 @@ A learning record may be associated with zero or more Projects. A Project may be
 - V1.0+: add recommendations and analytics only after evidence quality and privacy rules are validated.
 
 Acceptance requires domain-boundary tests, migration tests, workspace-isolation tests, and tests proving Learning cannot directly mutate Task, Project, Knowledge, or Artifact records.
+
+
+## Risks
+
+- Cross-domain coupling could grow if consumers bypass published contracts; enforce ownership through module visibility and contract tests.
+- Evidence quality or assessment semantics may be misunderstood; keep user confirmation and provenance visible.
+
+## Validation
+
+- Validate workspace isolation, reference authorization, lifecycle behavior, and idempotent event consumption.
+- Keep implementation and verification marked as pending until corresponding code and repeatable tests exist.
