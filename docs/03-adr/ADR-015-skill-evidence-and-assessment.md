@@ -3,8 +3,8 @@
 - **Status:** Accepted
 - **Decision date:** 2026-11-08
 - **Decision scope:** Beta 0.5 onward; schema extension points may be reserved earlier
-- **Implementation status:** Not Implemented
-- **Verification status:** Not Verified
+Implementation Status: Not Implemented
+Verification Status: Not Verified
 - **Related:** ADR-013, ADR-014, ADR-016
 
 ## Context
@@ -60,3 +60,14 @@ A time-stamped, user-confirmed assessment that references the Skill, selected ev
 ## Verification requirements
 
 Test evidence provenance, assessment history retention, scale versioning, workspace isolation, and the rule that learning completion alone cannot mutate proficiency.
+
+
+## Risks
+
+- Cross-domain coupling could grow if consumers bypass published contracts; enforce ownership through module visibility and contract tests.
+- Evidence quality or assessment semantics may be misunderstood; keep user confirmation and provenance visible.
+
+## Validation
+
+- Validate workspace isolation, reference authorization, lifecycle behavior, and idempotent event consumption.
+- Keep implementation and verification marked as pending until corresponding code and repeatable tests exist.
