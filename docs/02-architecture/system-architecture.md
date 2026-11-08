@@ -1,9 +1,9 @@
 # System Architecture
 
-**Architecture Baseline:** E0.2 + Learning & Growth extension  
-**Decision Status:** Accepted design baseline — see ADR-002 through ADR-006 and ADR-013 through ADR-016  
-**Implementation Status:** Not Implemented  
-**Verification Status:** Not Verified  
+**Architecture Baseline:** E0.2 + Learning & Growth extension
+**Decision Status:** Accepted design baseline — see ADR-002 through ADR-006 and ADR-013 through ADR-016
+**Implementation Status:** Not Implemented
+**Verification Status:** Not Verified
 **Applies to:** Alpha 0.1 through V1.0
 
 ## 1. Architectural objectives
@@ -77,6 +77,7 @@ No microservices, mandatory cloud account, mandatory PostgreSQL, shared writable
 ## 8. Accepted architecture decisions and remaining open items
 
 The following decisions are part of the current baseline:
+
 - Modular Monolith for Alpha 0.1 through V1.0; see ADR-002.
 - Workbench-owned desktop records remain local-first; external knowledge systems retain authority over their own content; see ADR-003.
 - Provider-specific capabilities remain behind Agent Adapters and central authorization; see ADR-004.
