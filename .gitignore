@@ -6,5 +6,5 @@ node_modules/
 dist/
 *.tsbuildinfo
 
-# Rust / Cargo
-/src-tauri/target/
+# Rust / Cargo (any depth: workspace root and test temp dirs)
+target/

@@ -1,0 +1,10 @@
+[package]
+name = "paw-application"
+description = "Use cases, published ports and contracts, authorization orchestration, and coordination"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+paw-domain = { path = "../paw-domain" }
