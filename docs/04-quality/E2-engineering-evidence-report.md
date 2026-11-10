@@ -1,9 +1,9 @@
 # E2 — Engineering Evidence Report (Work Packages E2-01 … E2-06)
 
 **Branch:** feat/e2-work-management
-**Status:** Work packages E2-01–E2-05 implemented with automated evidence; E2-06 review recorded here. E2 is NOT complete until the windowed Gate E run and milestone acceptance are recorded as explicit human steps.
-**Implementation Status:** Implemented (automated evidence; windowed run pending)
-**Verification Status:** Partially Verified — see the gate table
+**Status:** Work packages E2-01–E2-05 implemented with automated evidence; E2-06 review and the Gate E windowed run recorded (§5.1: items 1–5 and 7 pass; offline check deferred by the owner). Milestone acceptance = the owner's merge decision.
+**Implementation Status:** Implemented (automated evidence + windowed run)
+**Verification Status:** Mostly Verified — offline acceptance deferred to a follow-up
 
 ## 1. Work package evidence
 
@@ -52,6 +52,31 @@ Command-level evidence baseline at review time: 62 tests passing with `--no-fail
 6. Disconnect the network → repeat core operations offline → reconnect, no false success.
 7. Close and relaunch → everything restored (records, statuses, links, attachments metadata).
 8. Record OS/toolchain/commit + pass-fail per item as the human acceptance record (Gate F).
+
+### 5.1 Windowed run record (2026-11-10, Windows, toolchain 1.98.1, branch feat/e2-work-management)
+
+Executed via `pnpm exec tauri dev`. Two startup/UX defects were found and fixed during the run
+(`574a9cd` migration checksums made line-ending invariant with legacy ledger reconciliation —
+git autocrlf had rewritten working-tree file endings between checkouts and the raw-bytes hash
+failed closed; `1cd0865` attachments open via OS default application — WebView2 blocks
+programmatic blob downloads). Storage integrity was verified from the file system and metadata
+during the run: the managed file, metadata row and managed-id binding were consistent.
+
+| Runbook item | Result | Notes |
+|---|---|---|
+| 1. Window opens; picker restores persisted workspace | **Pass** | E1 gap repair verified in the running app |
+| 2. Area/Goal/Project/Task creation + links + live Dashboard | **Pass** | Owner confirmed all CRUD and dashboard updates |
+| 3. Task transitions incl. rework and terminal freeze | **Pass** | Owner confirmed |
+| 4. Scoped search | **Pass** | Owner confirmed |
+| 5. Attachments: add/open/remove + deletion guards | **Pass** after `1cd0865` | Opening initially did nothing (WebView2 blob-download block); fixed via temp-export + OS default app; guards confirmed |
+| 6. Offline check | **Deferred** | Recorded as a follow-up by the owner (also outstanding from the E1 run) |
+| 7. Restart persistence | **Pass** | Owner confirmed |
+| 8. Acceptance record | This section | Items 1–5 and 7 pass; item 6 deferred |
+
+A post-run database-side dump was skipped: the WSL service was temporarily unavailable. The
+storage-layer consistency had already been verified directly (managed file, metadata row and
+managed-id binding; migration ledger at 6 canonical checksums). Status rows and audit records
+continue to be covered by the automated suites.
 
 ## 6. Explicitly deferred
 
