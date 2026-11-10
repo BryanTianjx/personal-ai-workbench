@@ -102,21 +102,37 @@ pub fn migrate(conn: &mut Connection, migrations_dir: &std::path::Path) -> Resul
         let version: i64 = digits.parse().unwrap_or(i64::MAX);
 
         let sql = fs::read_to_string(path).map_err(|e| Error::Io { source: e })?;
-        let checksum = sha256_hex(sql.as_bytes());
+        // The checksum is computed over the line-ending-normalized content:
+        // git autocrlf rewrites working-tree files between checkouts on
+        // Windows, and a raw-bytes hash would then fail closed on a file
+        // whose SQL content is unchanged.
+        let normalized = normalize_line_endings(&sql);
+        let checksum = sha256_hex(normalized.as_bytes());
 
-        // Skip an already-applied migration only after verifying its checksum.
+        // Skip an already-applied migration only after verifying its
+        // checksum. Legacy rows (hashed from raw pre-normalization bytes)
+        // reconcile against the other line-ending variants of the same
+        // content and are rewritten to the canonical hash; genuine content
+        // changes match no variant and fail closed.
         if applied.contains_key(&version) {
-            if let Some(stored_checksum) = conflicting_checksum(&applied, version, &checksum) {
+            let stored_checksum = &applied.get(&version).expect("checked above").1;
+            if stored_checksum != &checksum && !is_legacy_checksum(stored_checksum, &sql) {
                 return Err(Error::ChecksumMismatch {
                     version,
-                    expected: stored_checksum,
+                    expected: stored_checksum.clone(),
                     found: checksum,
                 });
             }
+            if stored_checksum != &checksum {
+                // One-time ledger normalization (content-preserving).
+                tx.execute(
+                    "UPDATE schema_migrations SET checksum = ?1
+                     WHERE version = ?2",
+                    params![checksum, version],
+                )?;
+            }
             continue;
         }
-
-        // A checksum that does not match the ledger row is a hard failure.
 
         tx.execute_batch(&sql)?;
         tx.execute(
@@ -128,6 +144,24 @@ pub fn migrate(conn: &mut Connection, migrations_dir: &std::path::Path) -> Resul
 
     tx.commit()?;
     Ok(())
+}
+
+/// Normalize CRLF and lone CR to LF.
+fn normalize_line_endings(text: &str) -> String {
+    text.replace("\r\n", "\n").replace('\r', "\n")
+}
+
+/// Is `stored` the hash of a line-ending variant of the same content?
+/// Candidates: the raw bytes as read, and the fully-CRLF variant of the
+/// normalized content — the two forms Windows checkouts produce. A genuine
+/// content change matches no variant.
+fn is_legacy_checksum(stored: &str, sql: &str) -> bool {
+    let raw = sha256_hex(sql.as_bytes());
+    if raw == stored {
+        return true;
+    }
+    let crlf = sql.replace("\r\n", "\n").replace('\n', "\r\n");
+    sha256_hex(crlf.as_bytes()) == stored
 }
 
 /// Deterministic UTC epoch-milliseconds timestamp (used for migration
@@ -166,24 +200,6 @@ fn sha256_hex(data: &[u8]) -> String {
         };
     }
     String::from_utf8(out.to_vec()).unwrap()
-}
-
-/// If `version` was already applied with a *different* checksum, returns that
-/// stored checksum (a conflict). Otherwise `None`.
-fn conflicting_checksum(
-    applied: &std::collections::HashMap<i64, (String, String, i64)>,
-    version: i64,
-    checksum: &str,
-) -> Option<String> {
-    applied
-        .get(&version)
-        .and_then(|(_stored_name, stored_checksum, _applied_at)| {
-            if *stored_checksum != checksum {
-                Some(stored_checksum.clone())
-            } else {
-                None
-            }
-        })
 }
 
 #[cfg(test)]
@@ -299,6 +315,89 @@ mod tests {
         drop(conn);
         fs::remove_dir_all(db.parent().unwrap()).unwrap();
         fs::remove_dir_all(bad_dir).unwrap();
+    }
+
+    #[test]
+    fn legacy_crlf_ledger_row_reconciles_to_normalized_checksum() {
+        let db = temp_db();
+        let mut conn = open(&db).unwrap();
+
+        // Establish the real migrations, then simulate a pre-normalization
+        // legacy row: rewrite the ledger checksum of version 1 to the hash
+        // of the CRLF variant of the same content (what a raw-bytes runner
+        // recorded before the line-ending fix).
+        migrate(&mut conn, &migrations_dir()).unwrap();
+        let file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../migrations/sqlite/0001_initial_workspace_project.sql");
+        let content = fs::read_to_string(&file).unwrap();
+        let crlf_variant = content.replace("\r\n", "\n").replace('\n', "\r\n");
+        let legacy_checksum = {
+            use sha2::Digest;
+            let mut hasher = sha2::Sha256::new();
+            hasher.update(crlf_variant.as_bytes());
+            let digest = hasher.finalize();
+            let hex: String = digest.iter().map(|b| format!("{b:02x}")).collect();
+            hex
+        };
+        conn.execute(
+            "UPDATE schema_migrations SET checksum = ?1 WHERE version = 1",
+            [&legacy_checksum],
+        )
+        .unwrap();
+
+        // Re-running migrate reconciles the line-ending-only difference and
+        // rewrites the ledger row to the canonical (LF) hash.
+        migrate(&mut conn, &migrations_dir()).unwrap();
+        let stored: String = conn
+            .query_row(
+                "SELECT checksum FROM schema_migrations WHERE version = 1",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let normalized_checksum = {
+            use sha2::Digest;
+            let mut hasher = sha2::Sha256::new();
+            hasher.update(content.replace("\r\n", "\n").replace('\r', "\n").as_bytes());
+            let digest = hasher.finalize();
+            let hex: String = digest.iter().map(|b| format!("{b:02x}")).collect();
+            hex
+        };
+        assert_eq!(stored, normalized_checksum);
+        drop(conn);
+        fs::remove_dir_all(db.parent().unwrap()).unwrap();
+    }
+
+    #[test]
+    fn genuine_content_change_still_fails_closed() {
+        let db = temp_db();
+        let mut conn = open(&db).unwrap();
+        migrate(&mut conn, &migrations_dir()).unwrap();
+
+        // Present a migration file whose SQL content genuinely changed
+        // (not just line endings): matches no checksum variant.
+        let tampered_dir = temp_dir();
+        let original = fs::read_to_string(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../../migrations/sqlite/0001_initial_workspace_project.sql"),
+        )
+        .unwrap();
+        let tampered = original.replace("workspaces", "workspaces_tampered");
+        assert_ne!(tampered, original);
+        fs::write(
+            tampered_dir.join("0001_initial_workspace_project.sql"),
+            tampered,
+        )
+        .unwrap();
+
+        let result = migrate(&mut conn, &tampered_dir);
+        assert!(matches!(
+            result,
+            Err(Error::ChecksumMismatch { version: 1, .. })
+        ));
+        drop(conn);
+        fs::remove_dir_all(db.parent().unwrap()).unwrap();
+        fs::remove_dir_all(tampered_dir).unwrap();
     }
 
     fn temp_dir() -> PathBuf {
