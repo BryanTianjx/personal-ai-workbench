@@ -8,5 +8,7 @@
 
 pub mod architecture_checks;
 pub mod backup;
+pub mod operations;
+pub mod outbox;
 pub mod repositories;
 pub mod sqlite;
