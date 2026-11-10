@@ -5,6 +5,7 @@ pub mod area_repository;
 pub mod attachment_repository;
 pub mod audit;
 pub mod authorization;
+pub mod dashboard;
 pub mod file_store;
 pub mod goal_repository;
 pub mod search;

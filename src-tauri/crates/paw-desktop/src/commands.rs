@@ -36,6 +36,7 @@ pub struct WorkManagementApi {
     goals: SqliteGoalRepository,
     tasks: SqliteTaskRepository,
     search: paw_infrastructure::search::SqliteSearchService,
+    dashboard: paw_infrastructure::dashboard::SqliteDashboard,
     attachments:
         paw_infrastructure::repositories::attachment_repository::SqliteAttachmentRepository,
     file_store: paw_infrastructure::filesystem::FsManagedFileStore,
@@ -54,6 +55,7 @@ impl WorkManagementApi {
             goals: SqliteGoalRepository::open(db_path)?,
             tasks: SqliteTaskRepository::open(db_path)?,
             search: paw_infrastructure::search::SqliteSearchService::open(db_path)?,
+            dashboard: paw_infrastructure::dashboard::SqliteDashboard::open(db_path)?,
             attachments:
                 paw_infrastructure::repositories::attachment_repository::SqliteAttachmentRepository::open(
                     db_path,
@@ -305,6 +307,21 @@ impl WorkManagementApi {
         limit: usize,
     ) -> Result<Vec<paw_application::ports::search::SearchHit>, CommandError> {
         use_cases::search(&self.search, workspace_id, query, limit).map_err(CommandError::from)
+    }
+
+    // -- Dashboard (E2-05) ----------------------------------------------------
+
+    /// Real-data summary for one workspace (PAW-F-004).
+    pub fn dashboard(
+        &self,
+        workspace_id: &WorkspaceId,
+    ) -> Result<paw_application::ports::dashboard::DashboardSummary, CommandError> {
+        use paw_application::ports::dashboard::DashboardPort;
+        self.dashboard.summary(workspace_id).map_err(|e| match e {
+            paw_application::ports::dashboard::DashboardError::Invariant(_) => {
+                CommandError::Unexpected
+            }
+        })
     }
 
     // -- Attachments (E2-04) --------------------------------------------------
@@ -853,6 +870,17 @@ pub fn search(
         .lock()
         .expect("WorkManagementApi mutex must not be poisoned");
     api.search(&workspace_id, &query, limit.unwrap_or(20))
+}
+
+#[tauri::command]
+pub fn dashboard(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+) -> Result<paw_application::ports::dashboard::DashboardSummary, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.dashboard(&workspace_id)
 }
 
 #[tauri::command]

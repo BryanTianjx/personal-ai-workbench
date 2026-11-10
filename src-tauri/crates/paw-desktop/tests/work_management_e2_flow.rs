@@ -111,6 +111,27 @@ fn full_work_management_flow_persists_across_restart() {
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].status, TaskStatus::Done);
         assert_eq!(tasks[0].id, task_id);
+
+        // Dashboard (PAW-F-004): real counts, zero-filled status rows.
+        let summary = api.dashboard(&ws.id).unwrap();
+        assert_eq!(summary.area_count, 1);
+        assert_eq!(summary.goal_count, 1);
+        assert_eq!(summary.attachment_count, 0);
+        assert_eq!(
+            summary
+                .projects_by_status
+                .iter()
+                .find(|(s, _)| s == "active"),
+            Some(&("active".into(), 1))
+        );
+        assert_eq!(
+            summary.tasks_by_status.iter().find(|(s, _)| s == "done"),
+            Some(&("done".into(), 1))
+        );
+        assert_eq!(
+            summary.tasks_by_status.iter().find(|(s, _)| s == "todo"),
+            Some(&("todo".into(), 0))
+        );
     }
 
     fs::remove_dir_all(&dir).unwrap();

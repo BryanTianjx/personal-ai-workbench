@@ -98,6 +98,7 @@ pub fn run() {
             commands::delete_task,
             commands::list_tasks,
             commands::search,
+            commands::dashboard,
             commands::add_attachment,
             commands::list_attachments,
             commands::read_attachment,
