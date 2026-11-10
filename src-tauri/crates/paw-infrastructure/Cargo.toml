@@ -10,7 +10,7 @@ repository.workspace = true
 paw-application = { path = "../paw-application" }
 paw-domain = { path = "../paw-domain" }
 
-# SQLite driver + content checksum (E1-03: connection policy, migration runner)
-rusqlite = { version = "0.34", features = ["bundled"] }
+# SQLite driver + content checksum (E1-03) + online backup API (E1-06)
+rusqlite = { version = "0.34", features = ["bundled", "backup"] }
 sha2 = "0.10"
 thiserror = "1"

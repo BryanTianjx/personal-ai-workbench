@@ -7,5 +7,6 @@
 //! crate.
 
 pub mod architecture_checks;
+pub mod backup;
 pub mod repositories;
 pub mod sqlite;
