@@ -2151,6 +2151,8 @@ name = "paw-application"
 version = "0.1.0"
 dependencies = [
  "paw-domain",
+ "serde",
+ "uuid",
 ]
 
 [[package]]

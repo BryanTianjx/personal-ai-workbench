@@ -83,7 +83,21 @@ impl Authorizer for LocalSingleUserAuthorizer {
         match action {
             ProtectedAction::CreateWorkspace
             | ProtectedAction::CreateProject { .. }
-            | ProtectedAction::DeleteWorkspace { .. } => Ok(()),
+            | ProtectedAction::UpdateProject { .. }
+            | ProtectedAction::DeleteProject { .. }
+            | ProtectedAction::DeleteWorkspace { .. }
+            | ProtectedAction::CreateArea { .. }
+            | ProtectedAction::UpdateArea { .. }
+            | ProtectedAction::DeleteArea { .. }
+            | ProtectedAction::CreateGoal { .. }
+            | ProtectedAction::UpdateGoal { .. }
+            | ProtectedAction::DeleteGoal { .. }
+            | ProtectedAction::CreateTask { .. }
+            | ProtectedAction::UpdateTask { .. }
+            | ProtectedAction::TransitionTask { .. }
+            | ProtectedAction::DeleteTask { .. }
+            | ProtectedAction::CreateAttachment { .. }
+            | ProtectedAction::DeleteAttachment { .. } => Ok(()),
         }
     }
 }

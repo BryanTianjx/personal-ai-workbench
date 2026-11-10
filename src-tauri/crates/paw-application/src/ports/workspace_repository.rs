@@ -4,7 +4,7 @@
 //! and project records. The repository adapter (paw-infrastructure) enforces
 //! workspace scoping; the UI never touches repositories directly.
 
-use paw_domain::work_management::{Project, Workspace, WorkspaceId};
+use paw_domain::work_management::{Project, ProjectId, Workspace, WorkspaceId};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WorkspaceRepositoryError {
@@ -49,6 +49,11 @@ pub trait WorkspaceRepository {
         workspace_id: &WorkspaceId,
     ) -> Result<Option<Workspace>, WorkspaceRepositoryError>;
 
+    /// List every workspace (E2 workspace picker). Deliberately unscoped:
+    /// choosing which workspace to enter happens before any workspace
+    /// context exists. The returned records carry only id and name.
+    fn list_workspaces(&self) -> Result<Vec<Workspace>, WorkspaceRepositoryError>;
+
     /// List all projects in a workspace. Cross-workspace records are never
     /// returned: a project whose `workspace_id` differs from the requested
     /// workspace is invisible to this call.
@@ -69,8 +74,26 @@ pub trait WorkspaceRepository {
         project: &Project,
     ) -> Result<(), WorkspaceRepositoryError>;
 
-    /// Delete a workspace and all its projects (cascade). Cross-workspace
-    /// deletion is refused: `workspace_id` must be a workspace this adapter
-    /// actually owns.
+    /// Persist the full state of an existing project (E2: name, status,
+    /// Goal/Area links). The workspace binding is immutable; the project
+    /// must exist inside `workspace_id`.
+    fn update_project(
+        &self,
+        workspace_id: &WorkspaceId,
+        project: &Project,
+    ) -> Result<(), WorkspaceRepositoryError>;
+
+    /// Delete one project inside `workspace_id`. Referential protections
+    /// (tasks, later attachments) surface as typed rejections, never as
+    /// silent cascades.
+    fn delete_project(
+        &self,
+        workspace_id: &WorkspaceId,
+        project_id: &ProjectId,
+    ) -> Result<(), WorkspaceRepositoryError>;
+
+    /// Delete a workspace and all its records (cascade in dependency order).
+    /// Cross-workspace deletion is refused: `workspace_id` must be a
+    /// workspace this adapter actually owns.
     fn delete_workspace(&self, workspace_id: &WorkspaceId) -> Result<(), WorkspaceRepositoryError>;
 }

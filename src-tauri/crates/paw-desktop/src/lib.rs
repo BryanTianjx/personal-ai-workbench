@@ -63,6 +63,13 @@ fn bootstrap_state(app: &tauri::App) -> Result<WorkManagementApi, Box<dyn std::e
         // desktop is single-window, single-user).
     }
 
+    // The FTS projections are rebuildable and never authoritative: rebuild
+    // once after migrations so upgrades re-index existing content (E2-03).
+    {
+        let search = paw_infrastructure::search::SqliteSearchService::open(&db_path)?;
+        search.rebuild()?;
+    }
+
     let api = WorkManagementApi::open(&db_path)?;
     Ok(api)
 }
@@ -71,9 +78,33 @@ fn bootstrap_state(app: &tauri::App) -> Result<WorkManagementApi, Box<dyn std::e
 pub fn run() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
+            commands::list_workspaces,
             commands::create_workspace,
             commands::create_project,
+            commands::update_project,
+            commands::delete_project,
             commands::list_projects,
+            commands::create_area,
+            commands::update_area,
+            commands::delete_area,
+            commands::list_areas,
+            commands::create_goal,
+            commands::update_goal,
+            commands::delete_goal,
+            commands::list_goals,
+            commands::create_task,
+            commands::update_task_details,
+            commands::transition_task,
+            commands::delete_task,
+            commands::list_tasks,
+            commands::search,
+            commands::dashboard,
+            commands::add_attachment,
+            commands::list_attachments,
+            commands::read_attachment,
+            commands::read_attachment_bytes,
+            commands::open_attachment_externally,
+            commands::remove_attachment,
         ])
         .setup(|app| {
             let api = bootstrap_state(app)?;

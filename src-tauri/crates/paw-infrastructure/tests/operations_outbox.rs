@@ -6,6 +6,11 @@
 //! (lease expiry) causes safe redelivery; OutcomeUnknown blocks unsafe
 //! retry until reconciliation; quarantine after bounded retries. Cancellation
 //! and real-provider reconciliation are Tier 2 and not covered here.
+//!
+//! Clock convention: the dispatcher's clock is supplied explicitly, so the
+//! tests use a fixed far-future epoch `T` — later than every real
+//! `available_at` the enqueue path stamps — making claim/backoff sequences
+//! deterministic without sleeping.
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -18,6 +23,9 @@ use paw_infrastructure::outbox::{
 };
 use paw_infrastructure::sqlite;
 use rusqlite::Transaction;
+
+/// Fixed dispatcher time (year 2096): after any real enqueue timestamp.
+const T: i64 = 4_000_000_000_000;
 
 fn migrations_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../migrations/sqlite")
@@ -98,6 +106,7 @@ fn operation_lifecycle_happy_path_and_terminal_freeze() {
         )
         .unwrap();
     assert_eq!(no, 1);
+    drop(conn);
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
@@ -127,6 +136,7 @@ fn outcome_unknown_blocks_retry_until_reconciliation() {
         operations::resume_after_reconciliation(&conn, &op.id, "provider confirmed no effect")
             .unwrap();
     assert_eq!(resumed.status, OperationStatus::Running);
+    drop(conn);
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
@@ -138,6 +148,8 @@ fn restart_recovery_marks_running_operations_failed() {
     let running = operations::create_operation(&conn, &new_operation("backup.run")).unwrap();
     operations::transition(&conn, &running.id, OperationStatus::Running, None).unwrap();
     let scheduled = operations::create_operation(&conn, &new_operation("index.rebuild")).unwrap();
+    // RetryScheduled is only reachable from Running (E0.3.2 §2).
+    operations::transition(&conn, &scheduled.id, OperationStatus::Running, None).unwrap();
     operations::transition(&conn, &scheduled.id, OperationStatus::RetryScheduled, None).unwrap();
 
     // "Restart": a fresh process runs recovery against the same database.
@@ -162,6 +174,7 @@ fn restart_recovery_marks_running_operations_failed() {
         .unwrap()
         .unwrap();
     assert_eq!(still.status, OperationStatus::RetryScheduled);
+    drop(conn);
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
@@ -279,6 +292,7 @@ fn outbox_intent_commits_atomically_with_local_state() {
         .query_row("SELECT COUNT(*) FROM outbox_messages", [], |r| r.get(0))
         .unwrap();
     assert_eq!(total, 1);
+    drop(conn);
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
@@ -303,7 +317,7 @@ fn duplicate_delivery_is_harmless() {
         tx.commit().unwrap();
     }
 
-    let report = outbox::dispatch_once(&conn, &[&consumer], &dispatch_opts(100)).unwrap();
+    let report = outbox::dispatch_once(&conn, &[&consumer], &dispatch_opts(T)).unwrap();
     assert_eq!(report.delivered, 1);
     assert_eq!(effects_count(&conn, "test_consumer"), 1);
 
@@ -318,9 +332,10 @@ fn duplicate_delivery_is_harmless() {
         .unwrap();
         tx.commit().unwrap();
     }
-    let report2 = outbox::dispatch_once(&conn, &[&consumer], &dispatch_opts(100)).unwrap();
+    let report2 = outbox::dispatch_once(&conn, &[&consumer], &dispatch_opts(T)).unwrap();
     assert_eq!(report2.deduplicated, 1);
     assert_eq!(effects_count(&conn, "test_consumer"), 1);
+    drop(conn);
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
@@ -356,13 +371,14 @@ fn expired_lease_is_redelivered_after_simulated_crash() {
         .unwrap();
         tx.commit().unwrap();
     }
-    let report = outbox::dispatch_once(&conn, &[&consumer], &dispatch_opts(100)).unwrap();
+    let report = outbox::dispatch_once(&conn, &[&consumer], &dispatch_opts(T)).unwrap();
     assert_eq!(report.delivered, 1);
     assert_eq!(effects_count(&conn, "test_consumer"), 1);
     let status: String = conn
         .query_row("SELECT status FROM outbox_messages", [], |r| r.get(0))
         .unwrap();
     assert_eq!(status, "Delivered");
+    drop(conn);
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
@@ -388,9 +404,9 @@ fn poison_message_quarantines_after_bounded_retries() {
     }
 
     // Three dispatch runs: fail → rescheduled, fail → rescheduled, fail →
-    // quarantined (max_attempts = 3). Backoff (1 * 2^n) is exhausted by the
-    // explicit `now` values below.
-    for now in [100_i64, 200, 400] {
+    // quarantined (max_attempts = 3). Backoff is 1 * 2^n ms, exhausted by
+    // the explicit dispatcher clocks below.
+    for now in [T, T + 1_000, T + 2_000] {
         outbox::dispatch_once(&conn, &[&consumer], &dispatch_opts(now)).unwrap();
     }
     let (status, category): (String, String) = conn
@@ -404,6 +420,7 @@ fn poison_message_quarantines_after_bounded_retries() {
     assert_eq!(category, "consumer_transient_failure");
     // No local effect ever committed despite repeated attempts.
     assert_eq!(effects_count(&conn, "test_consumer"), 0);
+    drop(conn);
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
@@ -427,7 +444,7 @@ fn event_without_consumer_quarantines_immediately() {
         event_type: "project.created",
         fail_first_n: std::cell::Cell::new(0),
     };
-    let report = outbox::dispatch_once(&conn, &[&consumer], &dispatch_opts(100)).unwrap();
+    let report = outbox::dispatch_once(&conn, &[&consumer], &dispatch_opts(T)).unwrap();
     assert_eq!(report.quarantined, 1);
     let (status, category): (String, String) = conn
         .query_row(
@@ -438,6 +455,7 @@ fn event_without_consumer_quarantines_immediately() {
         .unwrap();
     assert_eq!(status, "Quarantined");
     assert_eq!(category, "no_consumer");
+    drop(conn);
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
@@ -453,5 +471,6 @@ fn invalid_payload_json_is_rejected_before_sqlite() {
         Err(OutboxError::InvalidPayload(_))
     ));
     drop(tx);
+    drop(conn);
     std::fs::remove_dir_all(&dir).unwrap();
 }

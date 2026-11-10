@@ -12,5 +12,6 @@ pub mod use_cases;
 // paw-domain directly (E1-rust-workspace-layout §2), so the published
 // application surface carries the entity types the UI boundary needs.
 pub use paw_domain::work_management::{
-    ParseError, Project, ProjectId, ValidationError, Workspace, WorkspaceId,
+    Area, AreaId, Goal, GoalId, ParseError, Project, ProjectId, ProjectStatus, Task, TaskId,
+    TaskStatus, ValidationError, Workspace, WorkspaceId,
 };

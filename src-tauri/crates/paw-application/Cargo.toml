@@ -8,3 +8,7 @@ repository.workspace = true
 
 [dependencies]
 paw-domain = { path = "../paw-domain" }
+# Serialization of published DTOs crossing the desktop boundary (Gate C
+# contract surface); no infrastructure types leak through it.
+serde = { version = "1", features = ["derive"] }
+uuid = { version = "1", features = ["v7"] }
