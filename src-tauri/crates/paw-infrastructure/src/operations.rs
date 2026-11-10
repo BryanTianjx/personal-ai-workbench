@@ -92,6 +92,11 @@ pub struct OperationRow {
     pub workspace_id: Option<String>,
     pub status: OperationStatus,
     pub correlation_id: String,
+    /// Earliest eligible retry time (`RetryScheduled` only).
+    pub next_attempt_at: Option<i64>,
+    /// Set by `request_cancellation`; a request is not proof of remote stop.
+    pub cancellation_requested_at: Option<i64>,
+    pub updated_at: i64,
 }
 
 /// Fields required to open a new operation envelope.
@@ -107,6 +112,28 @@ pub struct NewOperation {
     pub actor_id: String,
     pub correlation_id: String,
     pub causation_id: Option<String>,
+    /// Declared cancellation capability (E3-01): `supported` means the work
+    /// can cooperatively stop; `unsupported` must be explicit — a
+    /// cancellation request against it is a typed error, never a silent no-op.
+    pub cancellation_support: CancellationSupport,
+}
+
+/// Declared cancellation capability; strings match the schema CHECK.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CancellationSupport {
+    Supported,
+    Unsupported,
+    Unknown,
+}
+
+impl CancellationSupport {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Supported => "supported",
+            Self::Unsupported => "unsupported",
+            Self::Unknown => "unknown",
+        }
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -146,11 +173,14 @@ fn row_to_operation(row: &rusqlite::Row<'_>) -> rusqlite::Result<OperationRow> {
         status: OperationStatus::parse(&status)
             .expect("status values are constrained by the schema CHECK"),
         correlation_id: row.get("correlation_id")?,
+        next_attempt_at: row.get("next_attempt_at")?,
+        cancellation_requested_at: row.get("cancellation_requested_at")?,
+        updated_at: row.get("updated_at")?,
     })
 }
 
 const OPERATION_COLUMNS: &str = "id, kind, owner_domain, owner_type, owner_id, workspace_id, \
-     status, correlation_id";
+     status, correlation_id, next_attempt_at, cancellation_requested_at, updated_at";
 
 /// Open a new operation envelope in `Pending` state.
 pub fn create_operation(
@@ -163,7 +193,7 @@ pub fn create_operation(
         "INSERT INTO operations (id, kind, owner_domain, owner_type, owner_id, workspace_id, \
          status, actor_id, correlation_id, causation_id, cancellation_support, \
          created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'Pending', ?7, ?8, ?9, 'unknown', ?10, ?10)",
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'Pending', ?7, ?8, ?9, ?10, ?11, ?11)",
         params![
             id,
             new.kind,
@@ -174,6 +204,7 @@ pub fn create_operation(
             new.actor_id,
             new.correlation_id,
             new.causation_id,
+            new.cancellation_support.as_str(),
             now,
         ],
     )?;
@@ -266,6 +297,261 @@ pub fn recover_interrupted(conn: &Connection) -> Result<usize, OperationError> {
         params![now],
     )?;
     Ok(changed)
+}
+
+// ---------------------------------------------------------------------------
+// Tier 2 (E3-01): retry classification, due-claim scheduling, cancellation
+// ---------------------------------------------------------------------------
+
+/// Classification of a failed attempt, per ADR-019: retry decisions require
+/// knowing whether the previous attempt was rejected before submission,
+/// accepted by the target, or indeterminate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FailureClassification {
+    /// The attempt never reached the target (validated out, queued out):
+    /// safe to retry after backoff.
+    RejectedBeforeSubmit,
+    /// The target accepted the work: poll/reconcile, never resubmit.
+    Accepted,
+    /// The outcome is not established: the envelope moves to
+    /// OutcomeUnknown and blocks non-idempotent retry until reconciliation.
+    Indeterminate,
+}
+
+/// Retry backoff policy: `base * 2^(failures-1)` capped at `max`.
+#[derive(Debug, Clone, Copy)]
+pub struct RetryPolicy {
+    pub base_ms: i64,
+    pub max_backoff_ms: i64,
+}
+
+impl Default for RetryPolicy {
+    fn default() -> Self {
+        Self {
+            base_ms: 1_000,
+            max_backoff_ms: 60_000,
+        }
+    }
+}
+
+impl RetryPolicy {
+    fn backoff_ms(&self, failures: i64) -> i64 {
+        let exp = (failures - 1).clamp(0, 16);
+        (self.base_ms.saturating_mul(1i64 << exp)).min(self.max_backoff_ms)
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ClassificationError {
+    #[error("operation not found: {0}")]
+    NotFound(String),
+    #[error("invalid transition {from} -> {to}")]
+    InvalidTransition { from: String, to: String },
+    #[error("sql: {0}")]
+    Sql(#[from] rusqlite::Error),
+    #[error("clock: {source}")]
+    NowMsFailed { source: std::time::SystemTimeError },
+}
+
+impl From<OperationError> for ClassificationError {
+    fn from(e: OperationError) -> Self {
+        match e {
+            OperationError::NotFound(id) => Self::NotFound(id),
+            OperationError::InvalidTransition { from, to } => Self::InvalidTransition { from, to },
+            OperationError::Sql(source) => Self::Sql(source),
+            OperationError::NowMsFailed { source } => Self::NowMsFailed { source },
+        }
+    }
+}
+
+/// Classify a failed attempt and route the envelope accordingly (ADR-019):
+///
+/// - [`FailureClassification::RejectedBeforeSubmit`]: `Running →
+///   RetryScheduled` with `next_attempt_at = now + backoff(failures)`;
+/// - [`FailureClassification::Accepted`]: stays `Running` (poll/reconcile,
+///   never resubmit);
+/// - [`FailureClassification::Indeterminate`]: `Running → OutcomeUnknown`
+///   (blocks non-idempotent retry until
+///   [`resume_after_reconciliation`]).
+///
+/// One [`record_attempt`] row is appended in the same transaction.
+pub fn classify_failure_and_schedule_retry(
+    conn: &Connection,
+    operation_id: &str,
+    classification: FailureClassification,
+    error_category: &str,
+    policy: &RetryPolicy,
+) -> Result<OperationRow, ClassificationError> {
+    let current = get_operation(conn, operation_id)
+        .map_err(ClassificationError::from)?
+        .ok_or_else(|| ClassificationError::NotFound(operation_id.into()))?;
+    if current.status != OperationStatus::Running {
+        return Err(ClassificationError::InvalidTransition {
+            from: current.status.as_str().into(),
+            to: "RetryScheduled|Running|OutcomeUnknown (classified)".into(),
+        });
+    }
+    let now = now_ms()?;
+
+    // Attempt count drives the backoff exponent (monotonic, unique).
+    let attempts: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM operation_attempts WHERE operation_id = ?1",
+            [operation_id],
+            |r| r.get(0),
+        )
+        .map_err(ClassificationError::from)?;
+
+    let (attempt_outcome, retryable) = match classification {
+        FailureClassification::RejectedBeforeSubmit => (AttemptOutcome::Rejected, true),
+        FailureClassification::Accepted => (AttemptOutcome::Accepted, false),
+        FailureClassification::Indeterminate => (AttemptOutcome::Indeterminate, true),
+    };
+    record_attempt(
+        conn,
+        operation_id,
+        AttemptPhase::Submit,
+        attempt_outcome,
+        None,
+        None,
+        None,
+        retryable,
+        Some(error_category),
+        None,
+    )?;
+
+    match classification {
+        FailureClassification::Accepted => {
+            // Poll/reconcile: the envelope stays Running; no resubmission.
+            Ok(current)
+        }
+        FailureClassification::RejectedBeforeSubmit => {
+            let next_attempt_at = now + policy.backoff_ms(attempts.max(1));
+            conn.execute(
+                "UPDATE operations SET status = 'RetryScheduled', updated_at = ?1, \
+                 next_attempt_at = ?2, last_error_category = ?3 WHERE id = ?4",
+                params![now, next_attempt_at, error_category, operation_id],
+            )
+            .map_err(ClassificationError::from)?;
+            get_operation(conn, operation_id)
+                .map_err(ClassificationError::from)?
+                .ok_or_else(|| ClassificationError::NotFound(operation_id.into()))
+        }
+        FailureClassification::Indeterminate => {
+            conn.execute(
+                "UPDATE operations SET status = 'OutcomeUnknown', updated_at = ?1, \
+                 last_error_category = ?2 WHERE id = ?3",
+                params![now, error_category, operation_id],
+            )
+            .map_err(ClassificationError::from)?;
+            get_operation(conn, operation_id)
+                .map_err(ClassificationError::from)?
+                .ok_or_else(|| ClassificationError::NotFound(operation_id.into()))
+        }
+    }
+}
+
+/// Claim the earliest due `RetryScheduled` operation (next_attempt_at due)
+/// and move it back to `Running`. Returns `None` when nothing is due.
+pub fn claim_due_operation(
+    conn: &Connection,
+    now: i64,
+) -> Result<Option<OperationRow>, ClassificationError> {
+    let due: Option<String> = conn
+        .query_row(
+            "SELECT id FROM operations
+             WHERE status = 'RetryScheduled' AND next_attempt_at <= ?1
+             ORDER BY next_attempt_at LIMIT 1",
+            [now],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(ClassificationError::from)?;
+    let Some(id) = due else {
+        return Ok(None);
+    };
+    // RetryScheduled → Running is a legal transition; clear the due stamp.
+    conn.execute(
+        "UPDATE operations SET status = 'Running', updated_at = ?1, started_at = \
+         COALESCE(started_at, ?1), next_attempt_at = NULL WHERE id = ?2",
+        params![now, id],
+    )
+    .map_err(ClassificationError::from)?;
+    get_operation(conn, &id).map_err(ClassificationError::from)
+}
+
+/// Record a cooperative cancellation request. `unsupported` capability is
+/// an explicit typed error (never a silent no-op); the request is stamped
+/// but is not proof that any remote work stopped — the actual
+/// `Cancelled` transition still goes through the state machine.
+pub fn request_cancellation(
+    conn: &Connection,
+    id: &str,
+) -> Result<OperationRow, ClassificationError> {
+    let current = get_operation(conn, id)
+        .map_err(ClassificationError::from)?
+        .ok_or_else(|| ClassificationError::NotFound(id.into()))?;
+    let support: String = conn
+        .query_row(
+            "SELECT cancellation_support FROM operations WHERE id = ?1",
+            [id],
+            |r| r.get(0),
+        )
+        .map_err(ClassificationError::from)?;
+    if support == "unsupported" {
+        return Err(ClassificationError::InvalidTransition {
+            from: format!("cancellation_support={support}"),
+            to: "cancellation_requested".into(),
+        });
+    }
+    if current.status.is_terminal() {
+        return Err(ClassificationError::InvalidTransition {
+            from: current.status.as_str().into(),
+            to: "cancellation_requested".into(),
+        });
+    }
+    let now = now_ms()?;
+    conn.execute(
+        "UPDATE operations SET cancellation_requested_at = ?1, updated_at = ?1 WHERE id = ?2",
+        params![now, id],
+    )
+    .map_err(ClassificationError::from)?;
+    get_operation(conn, id)
+        .map_err(ClassificationError::from)?
+        .ok_or_else(|| ClassificationError::NotFound(id.into()))
+}
+
+/// List operations of one workspace (queue view), optionally filtered by
+/// status. System-scope rows (NULL workspace) are never returned by a
+/// workspace query (`E0.3.2` §2: NULL is not a wildcard grant).
+pub fn list_operations(
+    conn: &Connection,
+    workspace_id: &str,
+    status: Option<OperationStatus>,
+) -> Result<Vec<OperationRow>, ClassificationError> {
+    let sql = if status.is_some() {
+        format!(
+            "SELECT {OPERATION_COLUMNS} FROM operations \
+             WHERE workspace_id = ?1 AND status = ?2 ORDER BY updated_at DESC LIMIT 100"
+        )
+    } else {
+        format!(
+            "SELECT {OPERATION_COLUMNS} FROM operations \
+             WHERE workspace_id = ?1 ORDER BY updated_at DESC LIMIT 100"
+        )
+    };
+    let mut stmt = conn.prepare(&sql).map_err(ClassificationError::from)?;
+    let status_value = status.map(|s| s.as_str().to_string());
+    let mut rows = if status.is_some() {
+        stmt.query(params![workspace_id, status_value])?
+    } else {
+        stmt.query([workspace_id])?
+    };
+    let mut out = Vec::new();
+    while let Some(row) = rows.next()? {
+        out.push(row_to_operation(row)?);
+    }
+    Ok(out)
 }
 
 /// Attempt phase (`E0.3.2` §3); strings match the schema CHECK.

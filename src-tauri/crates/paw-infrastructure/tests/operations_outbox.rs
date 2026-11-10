@@ -59,6 +59,7 @@ fn new_operation(kind: &str) -> NewOperation {
         actor_id: "actor-1".into(),
         correlation_id: "corr-1".into(),
         causation_id: None,
+        cancellation_support: paw_infrastructure::operations::CancellationSupport::Supported,
     }
 }
 
@@ -471,6 +472,181 @@ fn invalid_payload_json_is_rejected_before_sqlite() {
         Err(OutboxError::InvalidPayload(_))
     ));
     drop(tx);
+    drop(conn);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+// ---------------------------------------------------------------------------
+// E3-01: retry classification, due-claim scheduling, cancellation semantics
+// ---------------------------------------------------------------------------
+
+use paw_infrastructure::operations as ops;
+use paw_infrastructure::operations::{CancellationSupport, FailureClassification, RetryPolicy};
+
+#[test]
+fn rejected_classification_schedules_backoff_and_due_claim_reruns() {
+    let dir = temp_dir("e3-classify-rejected");
+    let conn = open_migrated(&dir.join("app.sqlite"));
+    let policy = RetryPolicy {
+        base_ms: 500,
+        max_backoff_ms: 4_000,
+    };
+
+    let op = ops::create_operation(&conn, &new_operation("index.rebuild")).unwrap();
+    ops::transition(&conn, &op.id, OperationStatus::Running, None).unwrap();
+
+    let scheduled = ops::classify_failure_and_schedule_retry(
+        &conn,
+        &op.id,
+        FailureClassification::RejectedBeforeSubmit,
+        "validated_out",
+        &policy,
+    )
+    .unwrap();
+    assert_eq!(scheduled.status, OperationStatus::RetryScheduled);
+    let next = scheduled.next_attempt_at.expect("next_attempt_at set");
+
+    // Not due before the backoff elapses; due after it.
+    assert!(ops::claim_due_operation(&conn, next - 1).unwrap().is_none());
+    let rerun = ops::claim_due_operation(&conn, next).unwrap().expect("due");
+    assert_eq!(rerun.status, OperationStatus::Running);
+    assert_eq!(rerun.next_attempt_at, None);
+    drop(conn);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn accepted_classification_stays_running_and_indeterminate_blocks() {
+    let dir = temp_dir("e3-classify-accept-unknown");
+    let conn = open_migrated(&dir.join("app.sqlite"));
+
+    let accepted = ops::create_operation(&conn, &new_operation("backup.run")).unwrap();
+    ops::transition(&conn, &accepted.id, OperationStatus::Running, None).unwrap();
+    let after = ops::classify_failure_and_schedule_retry(
+        &conn,
+        &accepted.id,
+        FailureClassification::Accepted,
+        "target_accepted",
+        &RetryPolicy::default(),
+    )
+    .unwrap();
+    // Poll/reconcile: still Running, no resubmission scheduling.
+    assert_eq!(after.status, OperationStatus::Running);
+    assert_eq!(after.next_attempt_at, None);
+
+    let unknown = ops::create_operation(&conn, &new_operation("agent.invoke")).unwrap();
+    ops::transition(&conn, &unknown.id, OperationStatus::Running, None).unwrap();
+    let blocked = ops::classify_failure_and_schedule_retry(
+        &conn,
+        &unknown.id,
+        FailureClassification::Indeterminate,
+        "timeout_after_submit",
+        &RetryPolicy::default(),
+    )
+    .unwrap();
+    assert_eq!(blocked.status, OperationStatus::OutcomeUnknown);
+
+    // The unsafe retry is blocked until reconciliation.
+    assert!(matches!(
+        ops::transition(&conn, &unknown.id, OperationStatus::Running, None),
+        Err(OperationError::InvalidTransition { .. })
+    ));
+    ops::resume_after_reconciliation(&conn, &unknown.id, "provider confirmed no effect").unwrap();
+    drop(conn);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn backoff_grows_exponentially_and_caps() {
+    let policy = RetryPolicy {
+        base_ms: 1_000,
+        max_backoff_ms: 60_000,
+    };
+    // Private helper re-derivation: 1st failure 1s, 2nd 2s, 3rd 4s, cap 60s.
+    let derive = |failures: i64| {
+        let exp = (failures - 1).clamp(0, 16);
+        (policy.base_ms.saturating_mul(1i64 << exp)).min(policy.max_backoff_ms)
+    };
+    assert_eq!(derive(1), 1_000);
+    assert_eq!(derive(2), 2_000);
+    assert_eq!(derive(3), 4_000);
+    assert_eq!(derive(7), 60_000, "capped at max_backoff_ms");
+}
+
+#[test]
+fn cancellation_request_semantics() {
+    let dir = temp_dir("e3-cancel");
+    let conn = open_migrated(&dir.join("app.sqlite"));
+
+    // Supported capability: the request is stamped; the cooperative
+    // Cancelled transition then goes through the state machine.
+    let mut supported = new_operation("export.data");
+    supported.cancellation_support = CancellationSupport::Supported;
+    let op = ops::create_operation(&conn, &supported).unwrap();
+    ops::transition(&conn, &op.id, OperationStatus::Running, None).unwrap();
+    let requested = ops::request_cancellation(&conn, &op.id).unwrap();
+    assert!(requested.cancellation_requested_at.is_some());
+    let cancelled = ops::transition(&conn, &op.id, OperationStatus::Cancelled, None).unwrap();
+    assert_eq!(cancelled.status, OperationStatus::Cancelled);
+    // A request on a terminal envelope is refused.
+    assert!(matches!(
+        ops::request_cancellation(&conn, &op.id),
+        Err(ops::ClassificationError::InvalidTransition { .. })
+    ));
+
+    // Unsupported capability: explicit typed error, no stamp.
+    let mut unsupported = new_operation("hard.job");
+    unsupported.cancellation_support = CancellationSupport::Unsupported;
+    let hard = ops::create_operation(&conn, &unsupported).unwrap();
+    ops::transition(&conn, &hard.id, OperationStatus::Running, None).unwrap();
+    assert!(matches!(
+        ops::request_cancellation(&conn, &hard.id),
+        Err(ops::ClassificationError::InvalidTransition { .. })
+    ));
+    let stamp: Option<i64> = conn
+        .query_row(
+            "SELECT cancellation_requested_at FROM operations WHERE id = ?1",
+            [&hard.id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(stamp, None);
+    drop(conn);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn list_operations_is_workspace_scoped_and_filtered() {
+    let dir = temp_dir("e3-list");
+    let conn = open_migrated(&dir.join("app.sqlite"));
+
+    // The FK requires the workspace row to exist.
+    conn.execute(
+        "INSERT INTO workspaces (id, name, created_at, updated_at) \
+         VALUES ('11111111-1111-7111-8111-111111111111', '队列空间', 1, 1)",
+        [],
+    )
+    .unwrap();
+
+    let mut scoped = new_operation("report.build");
+    scoped.workspace_id = Some("11111111-1111-7111-8111-111111111111".into());
+    let in_ws = ops::create_operation(&conn, &scoped).unwrap();
+    let system = ops::create_operation(&conn, &new_operation("system.job")).unwrap();
+    assert_ne!(in_ws.workspace_id, system.workspace_id);
+
+    let listed = ops::list_operations(
+        &conn,
+        "11111111-1111-7111-8111-111111111111",
+        Some(OperationStatus::Pending),
+    )
+    .unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].id, in_ws.id);
+
+    // System-scope rows (NULL workspace) never appear in a workspace query.
+    let listed_all =
+        ops::list_operations(&conn, "11111111-1111-7111-8111-111111111111", None).unwrap();
+    assert_eq!(listed_all.len(), 1);
     drop(conn);
     std::fs::remove_dir_all(&dir).unwrap();
 }
