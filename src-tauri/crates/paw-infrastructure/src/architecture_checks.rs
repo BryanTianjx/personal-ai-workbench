@@ -113,10 +113,35 @@ fn forbidden_crate_edges_are_rejected() {
         );
     }
 
+    // paw-desktop is the composition root and the Tauri shell owner: besides
+    // the two PAW crates it may only pull in the Tauri shell runtime and the
+    // serialization primitives the command bridge needs (E1-rust-workspace
+    // layout §4: map typed errors to stable Tauri-safe errors at the
+    // boundary).
     for dep in &desktop {
         assert!(
-            *dep == "paw-application" || *dep == "paw-infrastructure",
-            "paw-desktop may only depend on application or infrastructure; desktop={desktop:?}",
+            *dep == "paw-application"
+                || *dep == "paw-infrastructure"
+                || DESKTOP_ALLOWED_EXTERNAL_CRATES.contains(&dep.as_str()),
+            "paw-desktop may only depend on application, infrastructure or the shell allowlist {DESKTOP_ALLOWED_EXTERNAL_CRATES:?}; desktop={desktop:?}",
+        );
+    }
+}
+
+/// External crates paw-desktop may depend on beyond the PAW crates: the
+/// Tauri 2 shell runtime and serde for command-bridge serialization.
+/// Tauri is forbidden in every other crate (see
+/// `only_paw_desktop_may_depend_on_tauri`).
+#[cfg(test)]
+const DESKTOP_ALLOWED_EXTERNAL_CRATES: &[&str] = &["tauri", "serde"];
+
+#[test]
+fn only_paw_desktop_may_depend_on_tauri() {
+    for name in ["paw-domain", "paw-application", "paw-infrastructure"] {
+        let deps = dependency_names(&cargo_toml(name));
+        assert!(
+            !deps.iter().any(|d| d == "tauri"),
+            "only paw-desktop may depend on Tauri; {name} declared {deps:?}",
         );
     }
 }

@@ -9,6 +9,17 @@ repository.workspace = true
 [dependencies]
 paw-application = { path = "../paw-application" }
 paw-infrastructure = { path = "../paw-infrastructure" }
+# Tauri shell (E1 Tauri-shell unit): paw-desktop is the only crate allowed to
+# depend on Tauri (ADR-018 / E1-rust-workspace-layout §2, §5.4). Only the
+# shell needs the WebView runtime; no features beyond core are required for
+# the E1 slice. serde serializes the existing domain/application contract
+# types for the command bridge (Gate C: errors are mapped to a safe,
+# non-leaky enum before they cross the boundary).
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
 
 [[bin]]
 name = "paw-desktop"
