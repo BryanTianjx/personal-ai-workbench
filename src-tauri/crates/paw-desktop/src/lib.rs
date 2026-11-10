@@ -103,6 +103,7 @@ pub fn run() {
             commands::list_attachments,
             commands::read_attachment,
             commands::read_attachment_bytes,
+            commands::open_attachment_externally,
             commands::remove_attachment,
         ])
         .setup(|app| {

@@ -94,18 +94,6 @@ function describe(e: unknown): string {
 
 const WORKSPACE_KEY = "paw.workspace-id";
 
-/** Download bytes as a local file (opened attachments never leave the
- * managed store; the browser saves a copy). */
-function downloadBytes(fileName: string, bytes: Uint8Array): void {
-  const blob = new Blob([bytes.slice().buffer as ArrayBuffer]);
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = fileName;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
 export default function App() {
   // ---- Workspace state ----
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
@@ -337,11 +325,13 @@ export default function App() {
 
   const openAttachment = (a: Attachment) =>
     run(async () => {
-      const bytes = await invoke<number[]>("read_attachment_bytes", {
+      // WebView2 blocks programmatic blob downloads; the Rust side exports
+      // the bytes to a temp file and hands it to the OS default app.
+      const path = await invoke<string>("open_attachment_externally", {
         workspaceId,
         attachmentId: a.id,
       });
-      downloadBytes(a.file_name, new Uint8Array(bytes));
+      setNotice(`已在系统默认程序中打开：${a.file_name}（临时副本：${path}）`);
     });
 
   const runSearch = () =>

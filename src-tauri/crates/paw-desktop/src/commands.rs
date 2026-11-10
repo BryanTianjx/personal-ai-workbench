@@ -11,6 +11,8 @@
 //! its own WAL connection (single-user desktop; SQLite serializes writers,
 //! the busy timeout absorbs contention).
 
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 use std::path::Path;
 
 use paw_application::ports::authorization::ExecutionContext;
@@ -377,6 +379,52 @@ impl WorkManagementApi {
             workspace_id,
             attachment_id,
         )
+    }
+
+    /// Open an attachment with the OS default application (E2-04 UI fix:
+    /// WebView2 swallows programmatic `<a download>` clicks, so bytes are
+    /// exported to a temp file and handed to the shell instead). The copy
+    /// lives under the user's temp directory; removing it is left to OS
+    /// temp cleanup and nothing is executed.
+    pub fn open_attachment_externally(
+        &self,
+        workspace_id: &WorkspaceId,
+        attachment_id: &str,
+    ) -> Result<String, WorkManagementError> {
+        let (attachment, bytes) = self.read_attachment(workspace_id, attachment_id)?;
+        let temp_dir = std::env::temp_dir().join("paw-attachments");
+        std::fs::create_dir_all(&temp_dir).map_err(|e| {
+            WorkManagementError::Repository(
+                paw_application::ports::workspace_repository::WorkspaceRepositoryError::Invariant(
+                    e.to_string(),
+                ),
+            )
+        })?;
+        // The attachment id prefixes the name: unique per attachment and
+        // free of path components (the stored file name was validated at
+        // add time).
+        let path = temp_dir.join(format!("{}_{}", attachment.id, attachment.file_name));
+        std::fs::write(&path, &bytes).map_err(|e| {
+            WorkManagementError::Repository(
+                paw_application::ports::workspace_repository::WorkspaceRepositoryError::Invariant(
+                    e.to_string(),
+                ),
+            )
+        })?;
+        // `start "" "path"` opens with the default application; the empty
+        // title argument guards paths with spaces.
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "", &path.to_string_lossy()])
+            .creation_flags(0x0800_0000) // CREATE_NO_WINDOW: no console flash
+            .spawn()
+            .map_err(|e| {
+                WorkManagementError::Repository(
+                    paw_application::ports::workspace_repository::WorkspaceRepositoryError::Invariant(
+                        e.to_string(),
+                    ),
+                )
+            })?;
+        Ok(path.to_string_lossy().into_owned())
     }
 
     pub fn remove_attachment(
@@ -943,6 +991,20 @@ pub fn read_attachment_bytes(
         .expect("WorkManagementApi mutex must not be poisoned");
     let (_attachment, bytes) = api.read_attachment(&workspace_id, &attachment_id)?;
     Ok(bytes)
+}
+
+/// Export the attachment to a temp file and open it with the OS default
+/// application (WebView2 blocks programmatic blob downloads; E2-04 UI fix).
+#[tauri::command]
+pub fn open_attachment_externally(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    attachment_id: String,
+) -> Result<String, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    Ok(api.open_attachment_externally(&workspace_id, &attachment_id)?)
 }
 
 #[tauri::command]
