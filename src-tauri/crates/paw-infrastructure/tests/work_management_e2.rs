@@ -275,7 +275,7 @@ fn upgrade_fixture_from_0003_preserves_projects() {
         let ledger: i64 = conn
             .query_row("SELECT COUNT(*) FROM schema_migrations", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(ledger, 6);
+        assert_eq!(ledger, 7);
     }
 
     // Stage 3: the pre-upgrade project survived with its data, and the new

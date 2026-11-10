@@ -13,6 +13,7 @@ pub mod filesystem;
 pub mod operations;
 pub mod outbox;
 pub mod repositories;
+pub mod retention;
 pub mod search;
 pub mod security;
 pub mod sqlite;

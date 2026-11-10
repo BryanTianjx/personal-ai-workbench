@@ -378,3 +378,96 @@ impl ConsumeOutcome {
 /// Retry pacing constant for reference (Tier 1 uses the caller-provided
 /// base); kept pub for the E3 service that wraps this dispatcher.
 pub const DISPATCH_PACE: Duration = Duration::from_millis(5);
+
+// ---------------------------------------------------------------------------
+// E3-02: quarantine visibility and explicit re-drive
+// ---------------------------------------------------------------------------
+
+/// A quarantined message as surfaced by the queue view.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QuarantinedMessage {
+    pub id: String,
+    pub event_type: String,
+    pub producer_domain: String,
+    pub aggregate_type: String,
+    pub aggregate_id: String,
+    pub attempts: i64,
+    pub redrive_count: i64,
+    pub last_error_category: Option<String>,
+    pub last_redrive_by: Option<String>,
+    pub payload_json: String,
+}
+
+fn row_to_quarantined(row: &rusqlite::Row<'_>) -> rusqlite::Result<QuarantinedMessage> {
+    Ok(QuarantinedMessage {
+        id: row.get("id")?,
+        event_type: row.get("event_type")?,
+        producer_domain: row.get("producer_domain")?,
+        aggregate_type: row.get("aggregate_type")?,
+        aggregate_id: row.get("aggregate_id")?,
+        attempts: row.get("attempts")?,
+        redrive_count: row.get("redrive_count")?,
+        last_error_category: row.get("last_error_category")?,
+        last_redrive_by: row.get("last_redrive_by")?,
+        payload_json: row.get("payload_json")?,
+    })
+}
+
+/// List every quarantined message (poison queue view). Workspace-scoped when
+/// a workspace filter is supplied; system-scope rows (NULL workspace) are
+/// only visible to the unfiltered system view.
+pub fn list_quarantined(
+    conn: &Connection,
+    workspace_id: Option<&str>,
+) -> Result<Vec<QuarantinedMessage>, OutboxError> {
+    let (sql, bind_ws): (&str, Option<Option<&str>>) = match workspace_id {
+        Some(ws) => (
+            "SELECT id, event_type, producer_domain, aggregate_type, aggregate_id, attempts, \
+             redrive_count, last_error_category, last_redrive_by, payload_json
+             FROM outbox_messages WHERE status = 'Quarantined' AND workspace_id = ?1
+             ORDER BY created_at ASC",
+            Some(Some(ws)),
+        ),
+        None => (
+            "SELECT id, event_type, producer_domain, aggregate_type, aggregate_id, attempts, \
+             redrive_count, last_error_category, last_redrive_by, payload_json
+             FROM outbox_messages WHERE status = 'Quarantined'
+             ORDER BY created_at ASC",
+            None,
+        ),
+    };
+    let mut stmt = conn.prepare(sql)?;
+    let mut rows = match bind_ws {
+        Some(Some(ws)) => stmt.query(params![ws])?,
+        _ => stmt.query([])?,
+    };
+    let mut out = Vec::new();
+    while let Some(row) = rows.next()? {
+        out.push(row_to_quarantined(row)?);
+    }
+    Ok(out)
+}
+
+/// Re-drive one quarantined message back into `Pending` (E0.3.2 §4: an
+/// explicit action that preserves the event id and records the operator;
+/// never silently a different event). Returns the message id on success.
+pub fn redrive_quarantined(
+    conn: &Connection,
+    message_id: &str,
+    operator: &str,
+    now: i64,
+) -> Result<String, OutboxError> {
+    let changed = conn.execute(
+        "UPDATE outbox_messages SET status = 'Pending', available_at = ?1, \
+         redrive_count = redrive_count + 1, last_redrive_by = ?2, \
+         lease_owner = NULL, lease_until = NULL
+         WHERE id = ?3 AND status = 'Quarantined'",
+        params![now, operator, message_id],
+    )?;
+    if changed == 0 {
+        return Err(OutboxError::InvalidPayload(format!(
+            "message {message_id} is not quarantined (or does not exist)"
+        )));
+    }
+    Ok(message_id.to_string())
+}

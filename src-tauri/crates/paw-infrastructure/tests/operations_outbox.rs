@@ -21,6 +21,7 @@ use paw_infrastructure::operations::{
 use paw_infrastructure::outbox::{
     self, ConsumeOutcome, DispatchOptions, NewOutboxEvent, OutboxConsumer, OutboxError,
 };
+use paw_infrastructure::repositories::workspace_repository::SqliteWorkspaceRepository;
 use paw_infrastructure::sqlite;
 use rusqlite::Transaction;
 
@@ -648,5 +649,211 @@ fn list_operations_is_workspace_scoped_and_filtered() {
         ops::list_operations(&conn, "11111111-1111-7111-8111-111111111111", None).unwrap();
     assert_eq!(listed_all.len(), 1);
     drop(conn);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+// ---------------------------------------------------------------------------
+// E3-02/E3-03: re-drive, retention export/purge, audit detach-on-delete
+// ---------------------------------------------------------------------------
+
+use paw_infrastructure::outbox::QuarantinedMessage;
+use paw_infrastructure::retention::{self, RetentionPolicy};
+
+fn quarantined_event() -> NewOutboxEvent {
+    NewOutboxEvent {
+        workspace_id: None,
+        producer_domain: "work_management".into(),
+        aggregate_type: "project".into(),
+        aggregate_id: "agg-9".into(),
+        event_type: "poison.event".into(),
+        schema_version: 1,
+        payload_json: r#"{"bad":true}"#.into(),
+        correlation_id: "corr-9".into(),
+        causation_id: None,
+    }
+}
+
+#[test]
+fn redrive_preserves_event_id_and_records_operator() {
+    let dir = temp_dir("e3-redrive");
+    let conn = open_migrated(&dir.join("app.sqlite"));
+    conn.execute(
+        "CREATE TABLE consumer_effects (consumer_name TEXT, message_id TEXT, payload TEXT)",
+        [],
+    )
+    .unwrap();
+
+    let event_id;
+    {
+        let tx = conn.unchecked_transaction().unwrap();
+        event_id = outbox::enqueue_in_tx(&tx, &quarantined_event()).unwrap();
+        tx.commit().unwrap();
+    }
+
+    // No consumer → quarantined immediately.
+    outbox::dispatch_once(&conn, &[], &dispatch_opts(T)).unwrap();
+    let quarantined: QuarantinedMessage = outbox::list_quarantined(&conn, None).unwrap().remove(0);
+    assert_eq!(quarantined.id, event_id);
+    assert_eq!(
+        quarantined.last_error_category.as_deref(),
+        Some("no_consumer")
+    );
+
+    // Re-drive preserves the event id, records the operator, and makes the
+    // message dispatchable again.
+    let redriven = outbox::redrive_quarantined(&conn, &event_id, "owner-admin", T + 5).unwrap();
+    assert_eq!(redriven, event_id);
+
+    // Still no consumer → quarantined again, but with re-drive bookkeeping.
+    outbox::dispatch_once(&conn, &[], &dispatch_opts(T + 10)).unwrap();
+    let again = outbox::list_quarantined(&conn, None).unwrap().remove(0);
+    assert_eq!(again.id, event_id, "event id preserved across re-drive");
+    assert_eq!(again.redrive_count, 1);
+    assert_eq!(again.last_redrive_by.as_deref(), Some("owner-admin"));
+    drop(conn);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn retention_export_and_purge_boundaries() {
+    let dir = temp_dir("e3-retention");
+    let conn = open_migrated(&dir.join("app.sqlite"));
+
+    // The operations live in one workspace (export is workspace-scoped).
+    let ws_id = "11111111-1111-7111-8111-111111111113";
+    conn.execute(
+        "INSERT INTO workspaces (id, name, created_at, updated_at) VALUES (?1, '保留空间', 1, 1)",
+        [ws_id],
+    )
+    .unwrap();
+    let mut scoped = new_operation("old.job");
+    scoped.workspace_id = Some(ws_id.to_string());
+
+    // Two operations: one terminal long ago, one reconciled unknown recently.
+    let old_done = ops::create_operation(&conn, &scoped).unwrap();
+    ops::transition(&conn, &old_done.id, OperationStatus::Running, None).unwrap();
+    ops::transition(&conn, &old_done.id, OperationStatus::Failed, None).unwrap();
+    ops::record_attempt(
+        &conn,
+        &old_done.id,
+        AttemptPhase::Submit,
+        AttemptOutcome::Failed,
+        None,
+        None,
+        None,
+        false,
+        Some("boom"),
+        None,
+    )
+    .unwrap();
+    let old_finished: i64 = conn
+        .query_row(
+            "SELECT finished_at FROM operations WHERE id = ?1",
+            [&old_done.id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    conn.execute(
+        "UPDATE operations SET finished_at = ?1 WHERE id = ?2",
+        rusqlite::params![old_finished - 91 * 24 * 60 * 60 * 1000, old_done.id],
+    )
+    .unwrap();
+
+    let mut scoped_fresh = scoped.clone();
+    scoped_fresh.kind = "fresh.job".into();
+    let fresh_unknown = ops::create_operation(&conn, &scoped_fresh).unwrap();
+    ops::transition(&conn, &fresh_unknown.id, OperationStatus::Running, None).unwrap();
+    ops::classify_failure_and_schedule_retry(
+        &conn,
+        &fresh_unknown.id,
+        FailureClassification::Indeterminate,
+        "timeout",
+        &RetryPolicy::default(),
+    )
+    .unwrap();
+
+    // Export includes both with their attempts (user-initiated, pre-purge).
+    let export = retention::export_operations_json(&conn, ws_id).unwrap();
+    assert!(export.contains("old.job"));
+    assert!(export.contains("fresh.job"));
+    assert!(export.contains("attempts"));
+    let parsed: serde_json::Value = serde_json::from_str(&export).unwrap();
+    assert_eq!(parsed.as_array().unwrap().len(), 2);
+
+    // Purge at the default policy: the 91-day-old terminal row goes; the
+    // unreconciled unknown never expires automatically.
+    let now: i64 = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as i64;
+    let (operations, attempts) =
+        retention::purge_expired_operations(&conn, now, &RetentionPolicy::default()).unwrap();
+    assert_eq!((operations, attempts), (1, 1));
+    let remaining: i64 = conn
+        .query_row("SELECT COUNT(*) FROM operations", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(remaining, 1, "unreconciled unknown survives");
+    drop(conn);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn workspace_delete_detaches_audit_rows_to_system_scope() {
+    let dir = temp_dir("e3-audit-detach");
+    let db = dir.join("app.sqlite");
+    open_migrated(&db);
+
+    // A workspace with one audited action (direct audit_events insert: the
+    // sink is System & Security's; this test exercises the migration-0007
+    // FK semantics, not the sink).
+    let ws_id = "11111111-1111-7111-8111-111111111112";
+    {
+        let conn = sqlite::open(&db).unwrap();
+        conn.execute(
+            "INSERT INTO workspaces (id, name, created_at, updated_at) VALUES (?1, '带审计', 1, 1)",
+            [ws_id],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO audit_events (id, workspace_id, actor_id, action, resource_type, \
+             resource_id, outcome, correlation_id, created_at)
+             VALUES ('a-1', ?1, 'local-user', 'workspace.create', 'workspace', ?1, 'allowed', \
+             'corr', 1)",
+            [ws_id],
+        )
+        .unwrap();
+        drop(conn);
+    }
+
+    // Deletion succeeds despite audit history (migration 0007: SET NULL) —
+    // the E1 refusal is closed by policy.
+    {
+        let repo = SqliteWorkspaceRepository::open(&db).unwrap();
+        use paw_application::ports::workspace_repository::WorkspaceRepository;
+        repo.delete_workspace(&paw_application::WorkspaceId::new(ws_id).unwrap())
+            .unwrap();
+        assert!(
+            repo.find_workspace(&paw_application::WorkspaceId::new(ws_id).unwrap())
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    // The audit rows survive as system-scope evidence (workspace_id NULL).
+    let audit_conn = sqlite::open(&db).unwrap();
+    let (detached, scoped_left): (i64, i64) = audit_conn
+        .query_row(
+            "SELECT COUNT(*) FILTER (WHERE workspace_id IS NULL), \
+             COUNT(*) FILTER (WHERE workspace_id IS NOT NULL) FROM audit_events",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(detached, 1, "audit row survives as system scope");
+    assert_eq!(
+        scoped_left, 0,
+        "no audit row still binds the deleted workspace"
+    );
+    drop(audit_conn);
     std::fs::remove_dir_all(&dir).unwrap();
 }
