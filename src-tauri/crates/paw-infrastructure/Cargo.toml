@@ -14,6 +14,7 @@ paw-domain = { path = "../paw-domain" }
 rusqlite = { version = "0.34", features = ["bundled", "backup"] }
 sha2 = "0.10"
 thiserror = "1"
+serde = { version = "1", features = ["derive"] }
 # Outbox/Operation IDs (E1-07/08 Tier 1: generated inside the persistence
 # service until the application coordination layer owns ID minting)
 uuid = { version = "1", features = ["v7"] }

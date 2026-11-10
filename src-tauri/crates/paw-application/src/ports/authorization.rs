@@ -47,6 +47,16 @@ pub enum ProtectedAction {
     CreateAttachment { workspace_id: WorkspaceId },
     /// Remove an attachment (metadata row + stored bytes).
     DeleteAttachment { workspace_id: WorkspaceId },
+    /// Request cooperative cancellation of an operation (E3-01).
+    CancelOperation { workspace_id: WorkspaceId },
+    /// Reconcile an OutcomeUnknown operation back into Running.
+    ResumeOperation { workspace_id: WorkspaceId },
+    /// Re-drive a quarantined outbox message (explicit, audited).
+    RedriveMessage { workspace_id: WorkspaceId },
+    /// Export the durable-operation history of a workspace (pre-purge step).
+    ExportWorkspaceData { workspace_id: WorkspaceId },
+    /// Purge expired operations/audit rows (explicit, system-wide).
+    PurgeExpiredData,
 }
 
 impl ProtectedAction {
@@ -70,6 +80,11 @@ impl ProtectedAction {
             Self::DeleteTask { .. } => "task.delete",
             Self::CreateAttachment { .. } => "attachment.create",
             Self::DeleteAttachment { .. } => "attachment.delete",
+            Self::CancelOperation { .. } => "operation.cancel",
+            Self::ResumeOperation { .. } => "operation.resume",
+            Self::RedriveMessage { .. } => "message.redrive",
+            Self::ExportWorkspaceData { .. } => "data.export",
+            Self::PurgeExpiredData => "data.purge",
         }
     }
 
@@ -94,6 +109,11 @@ impl ProtectedAction {
             Self::CreateAttachment { workspace_id } | Self::DeleteAttachment { workspace_id } => {
                 Some(workspace_id)
             }
+            Self::CancelOperation { workspace_id }
+            | Self::ResumeOperation { workspace_id }
+            | Self::RedriveMessage { workspace_id }
+            | Self::ExportWorkspaceData { workspace_id } => Some(workspace_id),
+            Self::PurgeExpiredData => None,
         }
     }
 }

@@ -97,7 +97,12 @@ impl Authorizer for LocalSingleUserAuthorizer {
             | ProtectedAction::TransitionTask { .. }
             | ProtectedAction::DeleteTask { .. }
             | ProtectedAction::CreateAttachment { .. }
-            | ProtectedAction::DeleteAttachment { .. } => Ok(()),
+            | ProtectedAction::DeleteAttachment { .. }
+            | ProtectedAction::CancelOperation { .. }
+            | ProtectedAction::ResumeOperation { .. }
+            | ProtectedAction::RedriveMessage { .. }
+            | ProtectedAction::ExportWorkspaceData { .. }
+            | ProtectedAction::PurgeExpiredData => Ok(()),
         }
     }
 }

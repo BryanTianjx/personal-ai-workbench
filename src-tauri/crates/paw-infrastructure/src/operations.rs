@@ -14,7 +14,8 @@ use crate::sqlite;
 
 /// Operation lifecycle states (`E0.3.2` §2). The strings match the CHECK
 /// constraint in migration 0002 exactly.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum OperationStatus {
     Pending,
     Running,
@@ -82,7 +83,8 @@ fn allowed_transitions(from: OperationStatus) -> &'static [OperationStatus] {
 }
 
 /// A persisted Operation row (subset of columns the service reads back).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
 pub struct OperationRow {
     pub id: String,
     pub kind: String,

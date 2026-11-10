@@ -17,6 +17,8 @@ paw-infrastructure = { path = "../paw-infrastructure" }
 # non-leaky enum before they cross the boundary).
 tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
+# Coordination connection for the E3 queue services (operations/outbox/retention)
+rusqlite = { version = "0.34", features = ["bundled"] }
 # Correlation ids for the E1-09 audit trail (per-command invocation)
 uuid = { version = "1", features = ["v7"] }
 

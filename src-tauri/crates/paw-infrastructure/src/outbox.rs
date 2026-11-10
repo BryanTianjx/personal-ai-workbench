@@ -384,7 +384,7 @@ pub const DISPATCH_PACE: Duration = Duration::from_millis(5);
 // ---------------------------------------------------------------------------
 
 /// A quarantined message as surfaced by the queue view.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct QuarantinedMessage {
     pub id: String,
     pub event_type: String,
