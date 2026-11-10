@@ -2160,8 +2160,10 @@ dependencies = [
  "paw-application",
  "paw-infrastructure",
  "serde",
+ "serde_json",
  "tauri",
  "tauri-build",
+ "uuid",
 ]
 
 [[package]]

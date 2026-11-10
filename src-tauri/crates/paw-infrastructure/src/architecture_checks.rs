@@ -129,11 +129,12 @@ fn forbidden_crate_edges_are_rejected() {
 }
 
 /// External crates paw-desktop may depend on beyond the PAW crates: the
-/// Tauri 2 shell runtime and serde for command-bridge serialization.
+/// Tauri 2 shell runtime, serde (command-bridge serialization) and uuid
+/// (per-command correlation ids for the audit trail).
 /// Tauri is forbidden in every other crate (see
 /// `only_paw_desktop_may_depend_on_tauri`).
 #[cfg(test)]
-const DESKTOP_ALLOWED_EXTERNAL_CRATES: &[&str] = &["tauri", "serde"];
+const DESKTOP_ALLOWED_EXTERNAL_CRATES: &[&str] = &["tauri", "serde", "uuid"];
 
 #[test]
 fn only_paw_desktop_may_depend_on_tauri() {

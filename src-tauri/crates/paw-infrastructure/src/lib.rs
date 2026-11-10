@@ -11,4 +11,5 @@ pub mod backup;
 pub mod operations;
 pub mod outbox;
 pub mod repositories;
+pub mod security;
 pub mod sqlite;

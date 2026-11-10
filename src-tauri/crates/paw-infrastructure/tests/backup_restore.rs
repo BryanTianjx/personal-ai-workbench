@@ -87,7 +87,7 @@ fn backup_round_trip_restores_workspaces_and_projects() {
 
         // Act: online backup while a connection to the WAL source is open.
         let info = backup::create_backup(&conn, &backup_file).unwrap();
-        assert_eq!(info.schema_version, 2);
+        assert_eq!(info.schema_version, 3);
         assert_eq!(info.app_version, env!("CARGO_PKG_VERSION"));
         drop(conn);
         (ws, project)
@@ -100,7 +100,7 @@ fn backup_round_trip_restores_workspaces_and_projects() {
 
     // Act: restore into the emptied location.
     let restored = backup::restore_backup(&backup_file, &active).unwrap();
-    assert_eq!(restored.schema_version, 2);
+    assert_eq!(restored.schema_version, 3);
     assert_eq!(restored.app_version, env!("CARGO_PKG_VERSION"));
 
     // Assert: data survived; integrity/fk checks ran inside restore, and
@@ -179,6 +179,6 @@ fn restored_database_migrates_idempotently() {
     let ledger: i64 = conn
         .query_row("SELECT COUNT(*) FROM schema_migrations", [], |r| r.get(0))
         .unwrap();
-    assert_eq!(ledger, 2);
+    assert_eq!(ledger, 3);
     drop(conn);
 }
