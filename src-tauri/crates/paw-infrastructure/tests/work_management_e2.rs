@@ -256,13 +256,13 @@ fn upgrade_fixture_from_0003_preserves_projects() {
         let mut conn = sqlite::open(&db).unwrap();
         sqlite::migrate(&mut conn, &partial).unwrap();
         conn.execute(
-            "INSERT INTO workspaces (id, name, created_at, updated_at) VALUES ('w-up', '升级前', 1, 1)",
+            "INSERT INTO workspaces (id, name, created_at, updated_at) VALUES ('11111111-1111-7111-8111-111111111111', '升级前', 1, 1)",
             [],
         )
         .unwrap();
         conn.execute(
             "INSERT INTO projects (id, workspace_id, name, description, status, created_at, updated_at)
-             VALUES ('p-up', 'w-up', '升级前的项目', '数据保留验证', 'active', 1, 1)",
+             VALUES ('22222222-2222-7222-8222-222222222222', '11111111-1111-7111-8111-111111111111', '升级前的项目', '数据保留验证', 'active', 1, 1)",
             [],
         )
         .unwrap();
@@ -282,7 +282,7 @@ fn upgrade_fixture_from_0003_preserves_projects() {
     // link columns are NULL; new-model inserts work.
     let workspaces = SqliteWorkspaceRepository::open(&db).unwrap();
     let projects = workspaces
-        .list_projects(&WorkspaceId::new("w-up").unwrap())
+        .list_projects(&WorkspaceId::new("11111111-1111-7111-8111-111111111111").unwrap())
         .unwrap();
     assert_eq!(projects.len(), 1);
     assert_eq!(projects[0].name, "升级前的项目");
@@ -295,7 +295,7 @@ fn upgrade_fixture_from_0003_preserves_projects() {
     let goals = SqliteGoalRepository::open(&db).unwrap();
     let area = Area::new(
         AreaId::new_v7(),
-        WorkspaceId::new("w-up").unwrap(),
+        WorkspaceId::new("11111111-1111-7111-8111-111111111111").unwrap(),
         "新区域",
         None,
     )
@@ -303,7 +303,7 @@ fn upgrade_fixture_from_0003_preserves_projects() {
     areas.insert_area(&area).unwrap();
     let goal = Goal::new(
         GoalId::new_v7(),
-        WorkspaceId::new("w-up").unwrap(),
+        WorkspaceId::new("11111111-1111-7111-8111-111111111111").unwrap(),
         Some(area.id.clone()),
         "升级后目标",
         None,
@@ -314,7 +314,10 @@ fn upgrade_fixture_from_0003_preserves_projects() {
     upgraded.goal_id = Some(goal.id.clone());
     upgraded.area_id = Some(area.id.clone());
     workspaces
-        .update_project(&WorkspaceId::new("w-up").unwrap(), &upgraded)
+        .update_project(
+            &WorkspaceId::new("11111111-1111-7111-8111-111111111111").unwrap(),
+            &upgraded,
+        )
         .unwrap();
 }
 

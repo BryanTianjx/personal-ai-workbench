@@ -31,6 +31,8 @@ enum RepoError {
     Constraint(String),
     /// The target workspace row does not exist.
     NotFound,
+    /// The target project row does not exist in the workspace.
+    ProjectNotFound,
 }
 
 impl From<rusqlite::Error> for RepoError {
@@ -59,6 +61,7 @@ impl From<RepoError> for WorkspaceRepositoryError {
             RepoError::Parse(e) => WorkspaceRepositoryError::Invariant(e.to_string()),
             RepoError::Constraint(msg) => WorkspaceRepositoryError::Invariant(msg),
             RepoError::NotFound => WorkspaceRepositoryError::WorkspaceNotFound,
+            RepoError::ProjectNotFound => WorkspaceRepositoryError::ProjectNotFound,
         }
     }
 }
@@ -133,6 +136,11 @@ impl WorkspaceRepository for SqliteWorkspaceRepository {
             .map_err(WorkspaceRepositoryError::from)
     }
 
+    fn list_workspaces(&self) -> Result<Vec<Workspace>, WorkspaceRepositoryError> {
+        self.list_workspaces_inner()
+            .map_err(WorkspaceRepositoryError::from)
+    }
+
     fn insert_project(
         &self,
         workspace_id: &WorkspaceId,
@@ -167,6 +175,20 @@ impl WorkspaceRepository for SqliteWorkspaceRepository {
 }
 
 impl SqliteWorkspaceRepository {
+    fn list_workspaces_inner(&self) -> Result<Vec<Workspace>, RepoError> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, name FROM workspaces ORDER BY created_at ASC")?;
+        let mut rows = stmt.query([])?;
+        let mut out = Vec::new();
+        while let Some(row) = rows.next()? {
+            let id = WorkspaceId::new(row.get::<_, String>(0)?)?;
+            let name: String = row.get(1)?;
+            out.push(Workspace { id, name });
+        }
+        Ok(out)
+    }
+
     fn find_workspace_inner(
         &self,
         workspace_id: &WorkspaceId,
@@ -278,7 +300,7 @@ impl SqliteWorkspaceRepository {
             )
             .map_err(|e| repo_constraint_error(e, project.id.as_str()))?;
         if changed == 0 {
-            return Err(RepoError::NotFound);
+            return Err(RepoError::ProjectNotFound);
         }
         Ok(())
     }
@@ -298,7 +320,7 @@ impl SqliteWorkspaceRepository {
             )
             .map_err(RepoError::from)?;
         if changed == 0 {
-            return Err(RepoError::NotFound);
+            return Err(RepoError::ProjectNotFound);
         }
         Ok(())
     }

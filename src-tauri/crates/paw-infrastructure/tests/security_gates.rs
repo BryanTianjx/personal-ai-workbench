@@ -54,8 +54,14 @@ fn allowed_action_writes_redacted_audit_row() {
     let audit = SqliteAuditSink::open(&db).unwrap();
     let authz = LocalSingleUserAuthorizer;
 
-    let ws =
-        use_cases::create_workspace(&repo, &authz, &audit, &ctx(LOCAL_ACTOR_ID), "alpha").unwrap();
+    let ws = use_cases::workspace::create_workspace(
+        &repo,
+        &authz,
+        &audit,
+        &ctx(LOCAL_ACTOR_ID),
+        "alpha",
+    )
+    .unwrap();
 
     // Exactly one audit row: the allowed workspace.create, with the opaque
     // resource id and no free text.
@@ -96,6 +102,12 @@ fn allowed_action_writes_redacted_audit_row() {
             "audit trail contains {leaky:?}: {dump}"
         );
     }
+    drop(repo);
+
+    drop(audit);
+
+    drop(audit_conn);
+
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
@@ -109,8 +121,13 @@ fn denied_actor_writes_nothing_and_audits_denial() {
     let audit = SqliteAuditSink::open(&db).unwrap();
     let authz = LocalSingleUserAuthorizer;
 
-    let result =
-        use_cases::create_workspace(&repo, &authz, &audit, &ctx("not-the-local-user"), "alpha");
+    let result = use_cases::workspace::create_workspace(
+        &repo,
+        &authz,
+        &audit,
+        &ctx("not-the-local-user"),
+        "alpha",
+    );
     assert_eq!(
         result,
         Err(WorkManagementError::Authorization(
@@ -136,6 +153,14 @@ fn denied_actor_writes_nothing_and_audits_denial() {
         .unwrap();
     assert_eq!(count, 1);
     assert_eq!(outcome, "denied");
+    drop(repo);
+
+    drop(repo2);
+
+    drop(audit);
+
+    drop(audit_conn);
+
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
@@ -174,5 +199,9 @@ fn failing_side_effect_audits_error_without_driver_text() {
     for leaky in ["UNIQUE", "constraint failed", "sqlite", "{", "}"] {
         assert!(!row.contains(leaky), "audit row contains {leaky:?}: {row}");
     }
+    drop(audit);
+
+    drop(audit_conn);
+
     std::fs::remove_dir_all(&dir).unwrap();
 }

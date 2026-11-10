@@ -49,6 +49,11 @@ pub trait WorkspaceRepository {
         workspace_id: &WorkspaceId,
     ) -> Result<Option<Workspace>, WorkspaceRepositoryError>;
 
+    /// List every workspace (E2 workspace picker). Deliberately unscoped:
+    /// choosing which workspace to enter happens before any workspace
+    /// context exists. The returned records carry only id and name.
+    fn list_workspaces(&self) -> Result<Vec<Workspace>, WorkspaceRepositoryError>;
+
     /// List all projects in a workspace. Cross-workspace records are never
     /// returned: a project whose `workspace_id` differs from the requested
     /// workspace is invisible to this call.

@@ -71,9 +71,25 @@ fn bootstrap_state(app: &tauri::App) -> Result<WorkManagementApi, Box<dyn std::e
 pub fn run() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
+            commands::list_workspaces,
             commands::create_workspace,
             commands::create_project,
+            commands::update_project,
+            commands::delete_project,
             commands::list_projects,
+            commands::create_area,
+            commands::update_area,
+            commands::delete_area,
+            commands::list_areas,
+            commands::create_goal,
+            commands::update_goal,
+            commands::delete_goal,
+            commands::list_goals,
+            commands::create_task,
+            commands::update_task_details,
+            commands::transition_task,
+            commands::delete_task,
+            commands::list_tasks,
         ])
         .setup(|app| {
             let api = bootstrap_state(app)?;

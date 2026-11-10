@@ -83,7 +83,9 @@ impl std::error::Error for ValidationError {}
 
 /// Trim and validate a required name/title against its schema-mirrored
 /// limit. `chars().count()` mirrors SQLite `length()` for text values.
-fn validate_name(name: &str, max: usize) -> Result<String, ValidationError> {
+/// Public so application updates of existing records re-validate through
+/// the same rule the constructors use.
+pub fn validate_name(name: &str, max: usize) -> Result<String, ValidationError> {
     let trimmed = name.trim();
     if trimmed.is_empty() {
         return Err(ValidationError::EmptyName);

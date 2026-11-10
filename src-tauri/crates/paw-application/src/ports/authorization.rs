@@ -1,4 +1,5 @@
-//! Authorization port published by the application layer (E1-09).
+//! Authorization port published by the application layer (E1-09, extended
+//! in E2 for the full Work Management surface).
 //!
 //! Every protected side effect is preceded by a fresh authorization check
 //! (ADR-017; Gate C). The port is intentionally capability-based and
@@ -15,8 +16,32 @@ pub enum ProtectedAction {
     CreateWorkspace,
     /// Create a project inside the given workspace.
     CreateProject { workspace_id: WorkspaceId },
-    /// Delete a workspace and all its projects.
+    /// Modify an existing project (name, description, status, links).
+    UpdateProject { workspace_id: WorkspaceId },
+    /// Delete a project inside the given workspace.
+    DeleteProject { workspace_id: WorkspaceId },
+    /// Delete a workspace and all its records.
     DeleteWorkspace { workspace_id: WorkspaceId },
+    /// Create an area inside the given workspace.
+    CreateArea { workspace_id: WorkspaceId },
+    /// Modify an existing area.
+    UpdateArea { workspace_id: WorkspaceId },
+    /// Delete an area inside the given workspace.
+    DeleteArea { workspace_id: WorkspaceId },
+    /// Create a goal inside the given workspace.
+    CreateGoal { workspace_id: WorkspaceId },
+    /// Modify an existing goal.
+    UpdateGoal { workspace_id: WorkspaceId },
+    /// Delete a goal inside the given workspace.
+    DeleteGoal { workspace_id: WorkspaceId },
+    /// Create a task inside the given workspace.
+    CreateTask { workspace_id: WorkspaceId },
+    /// Modify an existing task (title, notes, project link).
+    UpdateTask { workspace_id: WorkspaceId },
+    /// Move an existing task through its status machine.
+    TransitionTask { workspace_id: WorkspaceId },
+    /// Delete a task inside the given workspace.
+    DeleteTask { workspace_id: WorkspaceId },
 }
 
 impl ProtectedAction {
@@ -25,7 +50,19 @@ impl ProtectedAction {
         match self {
             Self::CreateWorkspace => "workspace.create",
             Self::CreateProject { .. } => "project.create",
+            Self::UpdateProject { .. } => "project.update",
+            Self::DeleteProject { .. } => "project.delete",
             Self::DeleteWorkspace { .. } => "workspace.delete",
+            Self::CreateArea { .. } => "area.create",
+            Self::UpdateArea { .. } => "area.update",
+            Self::DeleteArea { .. } => "area.delete",
+            Self::CreateGoal { .. } => "goal.create",
+            Self::UpdateGoal { .. } => "goal.update",
+            Self::DeleteGoal { .. } => "goal.delete",
+            Self::CreateTask { .. } => "task.create",
+            Self::UpdateTask { .. } => "task.update",
+            Self::TransitionTask { .. } => "task.transition",
+            Self::DeleteTask { .. } => "task.delete",
         }
     }
 
@@ -33,9 +70,20 @@ impl ProtectedAction {
     pub fn workspace(&self) -> Option<&WorkspaceId> {
         match self {
             Self::CreateWorkspace => None,
-            Self::CreateProject { workspace_id } | Self::DeleteWorkspace { workspace_id } => {
-                Some(workspace_id)
-            }
+            Self::CreateProject { workspace_id }
+            | Self::UpdateProject { workspace_id }
+            | Self::DeleteProject { workspace_id }
+            | Self::DeleteWorkspace { workspace_id }
+            | Self::CreateArea { workspace_id }
+            | Self::UpdateArea { workspace_id }
+            | Self::DeleteArea { workspace_id }
+            | Self::CreateGoal { workspace_id }
+            | Self::UpdateGoal { workspace_id }
+            | Self::DeleteGoal { workspace_id }
+            | Self::CreateTask { workspace_id }
+            | Self::UpdateTask { workspace_id }
+            | Self::TransitionTask { workspace_id }
+            | Self::DeleteTask { workspace_id } => Some(workspace_id),
         }
     }
 }

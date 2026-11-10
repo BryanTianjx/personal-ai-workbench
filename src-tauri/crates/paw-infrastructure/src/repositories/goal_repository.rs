@@ -166,16 +166,21 @@ impl SqliteGoalRepository {
         workspace_id: &WorkspaceId,
         area_id: Option<&AreaId>,
     ) -> Result<Vec<Goal>, RepoError> {
-        let sql = if area_id.is_some() {
+        // Parameter count must match the SQL shape exactly: rusqlite rejects
+        // binding an unused parameter.
+        let mut stmt = self.conn.prepare(if area_id.is_some() {
             "SELECT id, workspace_id, area_id, name, description FROM goals
              WHERE workspace_id = ?1 AND area_id = ?2 ORDER BY created_at ASC"
         } else {
             "SELECT id, workspace_id, area_id, name, description FROM goals
              WHERE workspace_id = ?1 ORDER BY created_at ASC"
+        })?;
+        let mut rows = if area_id.is_some() {
+            let area_value = area_id.map(|a| a.as_str().to_string());
+            stmt.query(rusqlite::params![workspace_id.as_str(), area_value])?
+        } else {
+            stmt.query([workspace_id.as_str()])?
         };
-        let mut stmt = self.conn.prepare(sql)?;
-        let area_value = area_id.map(|a| a.as_str().to_string());
-        let mut rows = stmt.query(rusqlite::params![workspace_id.as_str(), area_value])?;
         let mut out = Vec::new();
         while let Some(row) = rows.next()? {
             out.push(row_to_goal(row)?);

@@ -168,31 +168,38 @@ impl SqliteTaskRepository {
         project_id: Option<&ProjectId>,
         status: Option<TaskStatus>,
     ) -> Result<Vec<Task>, RepoError> {
-        // Workspace predicate is always present; optional filters append.
-        let mut sql = format!("SELECT {TASK_COLUMNS} FROM tasks WHERE workspace_id = ?1");
-        if project_id.is_some() {
-            sql.push_str(" AND project_id = ?2");
-        }
-        if status.is_some() {
-            sql.push_str(if project_id.is_some() {
-                " AND status = ?3"
-            } else {
-                " AND status = ?2"
-            });
-        }
-        sql.push_str(" ORDER BY created_at ASC");
-
+        // Parameter count must match the SQL shape exactly: rusqlite rejects
+        // binding an unused parameter.
+        let sql = match (project_id.is_some(), status.is_some()) {
+            (true, true) => format!(
+                "SELECT {TASK_COLUMNS} FROM tasks WHERE workspace_id = ?1 \
+                 AND project_id = ?2 AND status = ?3 ORDER BY created_at ASC"
+            ),
+            (true, false) => format!(
+                "SELECT {TASK_COLUMNS} FROM tasks WHERE workspace_id = ?1 \
+                 AND project_id = ?2 ORDER BY created_at ASC"
+            ),
+            (false, true) => format!(
+                "SELECT {TASK_COLUMNS} FROM tasks WHERE workspace_id = ?1 \
+                 AND status = ?2 ORDER BY created_at ASC"
+            ),
+            (false, false) => format!(
+                "SELECT {TASK_COLUMNS} FROM tasks WHERE workspace_id = ?1 \
+                 ORDER BY created_at ASC"
+            ),
+        };
         let mut stmt = self.conn.prepare(&sql)?;
         let project_value = project_id.map(|p| p.as_str().to_string());
         let status_value = status.map(|s| s.as_str().to_string());
-        let mut rows = if project_id.is_some() {
-            stmt.query(rusqlite::params![
+        let mut rows = match (project_id.is_some(), status.is_some()) {
+            (true, true) => stmt.query(rusqlite::params![
                 workspace_id.as_str(),
                 project_value,
                 status_value
-            ])?
-        } else {
-            stmt.query(rusqlite::params![workspace_id.as_str(), status_value])?
+            ])?,
+            (true, false) => stmt.query(rusqlite::params![workspace_id.as_str(), project_value])?,
+            (false, true) => stmt.query(rusqlite::params![workspace_id.as_str(), status_value])?,
+            (false, false) => stmt.query([workspace_id.as_str()])?,
         };
         let mut out = Vec::new();
         while let Some(row) = rows.next()? {
