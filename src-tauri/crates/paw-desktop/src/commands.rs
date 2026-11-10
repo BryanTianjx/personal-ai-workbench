@@ -35,6 +35,7 @@ pub struct WorkManagementApi {
     areas: SqliteAreaRepository,
     goals: SqliteGoalRepository,
     tasks: SqliteTaskRepository,
+    search: paw_infrastructure::search::SqliteSearchService,
     authorizer: LocalSingleUserAuthorizer,
     audit: SqliteAuditSink,
 }
@@ -48,6 +49,7 @@ impl WorkManagementApi {
             areas: SqliteAreaRepository::open(db_path)?,
             goals: SqliteGoalRepository::open(db_path)?,
             tasks: SqliteTaskRepository::open(db_path)?,
+            search: paw_infrastructure::search::SqliteSearchService::open(db_path)?,
             authorizer: LocalSingleUserAuthorizer,
             audit: SqliteAuditSink::open(db_path)?,
         })
@@ -275,6 +277,18 @@ impl WorkManagementApi {
         use_cases::goal::list_goals(&self.goals, workspace_id, area_id)
     }
 
+    // -- Search (E2-03) -----------------------------------------------------
+
+    /// Scoped full-text search over projects and tasks.
+    pub fn search(
+        &self,
+        workspace_id: &WorkspaceId,
+        query: &str,
+        limit: usize,
+    ) -> Result<Vec<paw_application::ports::search::SearchHit>, CommandError> {
+        use_cases::search(&self.search, workspace_id, query, limit).map_err(CommandError::from)
+    }
+
     // -- Tasks --------------------------------------------------------------
 
     pub fn create_task(
@@ -398,6 +412,8 @@ pub enum CommandError {
     InvalidWorkspaceId,
     /// A task status change refused by the domain state machine.
     TaskStatusInvalid,
+    /// The search query was empty or carried no searchable terms (E2-03).
+    InvalidSearchQuery,
     /// Fresh authorization refused the protected side effect (E1-09).
     Denied,
     /// Any other failure; details stay on the Rust side.
@@ -441,6 +457,16 @@ impl From<WorkManagementError> for CommandError {
 impl From<paw_application::ParseError> for CommandError {
     fn from(_: paw_application::ParseError) -> Self {
         Self::InvalidWorkspaceId
+    }
+}
+
+impl From<paw_application::ports::search::SearchError> for CommandError {
+    fn from(err: paw_application::ports::search::SearchError) -> Self {
+        match err {
+            paw_application::ports::search::SearchError::InvalidQuery => Self::InvalidSearchQuery,
+            // Storage failures stay opaque on the boundary.
+            paw_application::ports::search::SearchError::Invariant(_) => Self::Unexpected,
+        }
     }
 }
 
@@ -714,6 +740,19 @@ pub fn list_tasks(
         .lock()
         .expect("WorkManagementApi mutex must not be poisoned");
     Ok(api.list_tasks(&workspace_id, project_id.as_ref(), status)?)
+}
+
+#[tauri::command]
+pub fn search(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    query: String,
+    limit: Option<usize>,
+) -> Result<Vec<paw_application::ports::search::SearchHit>, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.search(&workspace_id, &query, limit.unwrap_or(20))
 }
 
 #[cfg(test)]

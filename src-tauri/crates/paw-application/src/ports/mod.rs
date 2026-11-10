@@ -5,5 +5,6 @@ pub mod area_repository;
 pub mod audit;
 pub mod authorization;
 pub mod goal_repository;
+pub mod search;
 pub mod task_repository;
 pub mod workspace_repository;

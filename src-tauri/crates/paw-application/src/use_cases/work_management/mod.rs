@@ -170,6 +170,17 @@ pub(crate) fn check_authorization(
 /// the workspace module; kept here as the named operation entry point.
 pub use workspace::list_workspaces;
 
+/// Scoped full-text search over the workspace's projects and tasks (E2-03).
+/// A read operation: workspace-scoped by the port, not authorization-gated.
+pub fn search(
+    port: &dyn crate::ports::search::SearchPort,
+    workspace_id: &WorkspaceId,
+    query: &str,
+    limit: usize,
+) -> Result<Vec<crate::ports::search::SearchHit>, crate::ports::search::SearchError> {
+    port.search(workspace_id, query, limit)
+}
+
 #[cfg(test)]
 pub(crate) mod test_support {
     //! Shared in-memory fakes for the Work Management use-case tests.

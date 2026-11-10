@@ -16,6 +16,7 @@ use paw_domain::work_management::{
     AreaId, GoalId, ParseError, Project, ProjectId, ProjectStatus, Workspace, WorkspaceId,
 };
 
+use crate::search;
 use crate::sqlite::{self, Error};
 
 use rusqlite::params;
@@ -266,6 +267,7 @@ impl SqliteWorkspaceRepository {
                 ],
             )
             .map_err(|e| repo_constraint_error(e, project.id.as_str()))?;
+        search::index_project(&self.conn, project);
         Ok(())
     }
 
@@ -302,6 +304,9 @@ impl SqliteWorkspaceRepository {
         if changed == 0 {
             return Err(RepoError::ProjectNotFound);
         }
+        // Keep the rebuildable FTS projection in step (same transaction).
+        search::deindex_project(&self.conn, project.id.as_str());
+        search::index_project(&self.conn, project);
         Ok(())
     }
 
@@ -322,6 +327,7 @@ impl SqliteWorkspaceRepository {
         if changed == 0 {
             return Err(RepoError::ProjectNotFound);
         }
+        search::deindex_project(&self.conn, project_id.as_str());
         Ok(())
     }
 
@@ -333,6 +339,15 @@ impl SqliteWorkspaceRepository {
         // deleted: a workspace with audit history is refused until the E3
         // audit retention policy lands.
         let tx = self.conn.unchecked_transaction()?;
+        // Rebuildable projections are cleaned inside the same transaction.
+        tx.execute(
+            "DELETE FROM fts_projects WHERE workspace_id = ?1",
+            params![workspace_id.as_str()],
+        )?;
+        tx.execute(
+            "DELETE FROM fts_tasks WHERE workspace_id = ?1",
+            params![workspace_id.as_str()],
+        )?;
         tx.execute(
             "DELETE FROM tasks WHERE workspace_id = ?1",
             params![workspace_id.as_str()],

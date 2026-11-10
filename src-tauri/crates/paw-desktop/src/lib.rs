@@ -63,6 +63,13 @@ fn bootstrap_state(app: &tauri::App) -> Result<WorkManagementApi, Box<dyn std::e
         // desktop is single-window, single-user).
     }
 
+    // The FTS projections are rebuildable and never authoritative: rebuild
+    // once after migrations so upgrades re-index existing content (E2-03).
+    {
+        let search = paw_infrastructure::search::SqliteSearchService::open(&db_path)?;
+        search.rebuild()?;
+    }
+
     let api = WorkManagementApi::open(&db_path)?;
     Ok(api)
 }
@@ -90,6 +97,7 @@ pub fn run() {
             commands::transition_task,
             commands::delete_task,
             commands::list_tasks,
+            commands::search,
         ])
         .setup(|app| {
             let api = bootstrap_state(app)?;

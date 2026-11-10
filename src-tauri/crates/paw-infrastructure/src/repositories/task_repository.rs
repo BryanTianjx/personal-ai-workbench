@@ -5,6 +5,7 @@ use std::path::Path;
 use paw_application::ports::task_repository::{TaskRepository, TaskRepositoryError};
 use paw_domain::work_management::{ParseError, ProjectId, Task, TaskId, TaskStatus, WorkspaceId};
 
+use crate::search;
 use crate::sqlite::{self, Error};
 
 enum RepoError {
@@ -144,6 +145,7 @@ impl SqliteTaskRepository {
                 ],
             )
             .map_err(|e| repo_constraint(e, task.id.as_str()))?;
+        search::index_task(&self.conn, task);
         Ok(())
     }
 
@@ -228,6 +230,8 @@ impl SqliteTaskRepository {
         if changed == 0 {
             return Err(RepoError::NotFound);
         }
+        search::deindex_task(&self.conn, task.id.as_str());
+        search::index_task(&self.conn, task);
         Ok(())
     }
 
@@ -246,6 +250,7 @@ impl SqliteTaskRepository {
         if changed == 0 {
             return Err(RepoError::NotFound);
         }
+        search::deindex_task(&self.conn, task_id.as_str());
         Ok(())
     }
 }
