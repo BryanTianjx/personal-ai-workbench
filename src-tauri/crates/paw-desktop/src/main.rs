@@ -1,9 +1,12 @@
-//! Placeholder desktop entry point for the E1-01 toolchain baseline.
+//! Desktop binary entry point: runs the Tauri shell owned by the
+//! `paw-desktop` library crate (composition root, ADR-018).
 //!
-//! The Tauri shell, typed command bridge, and composition root are added in
-//! later E1 work packages; this binary only proves that the workspace builds
-//! end to end on Windows.
+//! In release builds the process runs without a console window
+//! (`windows_subsystem = "windows"`); debug builds keep a console so
+//! diagnostics are visible during development and evidence runs.
+
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    println!("Personal AI Workbench — desktop skeleton (E1-01 baseline)");
+    paw_desktop::run();
 }

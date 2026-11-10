@@ -53,7 +53,7 @@ Alpha 0.1 起交付与验收目标为 Windows（Windows-only，见 ADR-021）；
 
 - **E0.2.2.3 Final Documentation Remediation & Freeze Gate：** Completed as documentation/design baseline only; software implementation and runtime verification are not implied.
 - **E0.3：** Architecture Consolidation & Engineering Readiness — E0.3.1 review and E0.3.2 ratification completed on 2026-11-08 (work delivered on docs/e0.3-architecture-consolidation, merged into main; branch deleted). ADR-017～020 are Accepted as the design baseline; implementation remains Not Implemented and verification Not Verified.
-- **E1：** Engineering skeleton and first Windows vertical slice — not implemented or verified by this documentation change.
+- **E1：** Engineering skeleton and first Windows vertical slice — work packages E1-01…E1-09 implemented on feat/e1-engineering with automated evidence (27 tests, clippy/fmt clean; see [E1 engineering evidence report](docs/04-quality/E1-engineering-evidence-report.md)). Windowed Gate E run and milestone acceptance remain explicit human steps; nothing here claims runtime acceptance yet.
 
 ## 文档入口
 

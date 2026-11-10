@@ -1,0 +1,35 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Personal AI Workbench",
+  "version": "0.1.0",
+  "identifier": "com.bryantianjx.personal-ai-workbench",
+  "build": {
+    "frontendDist": "../../dist",
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": {
+      "script": "pnpm dev",
+      "cwd": "../../"
+    },
+    "beforeBuildCommand": {
+      "script": "pnpm build",
+      "cwd": "../../"
+    }
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "自磨工坊 · Personal AI Workbench",
+        "width": 1024,
+        "height": 768,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": false
+  }
+}

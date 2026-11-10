@@ -231,7 +231,13 @@ mod tests {
         let ledger: i64 = conn
             .query_row("SELECT COUNT(*) FROM schema_migrations", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(ledger, 1);
+        // One row per migration file (0001, 0002, ...).
+        let files: i64 = std::fs::read_dir(&migrations_dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().extension().map(|x| x == "sql").unwrap_or(false))
+            .count() as i64;
+        assert_eq!(ledger, files);
 
         let tables: String = conn
             .query_row(
@@ -243,6 +249,8 @@ mod tests {
         assert!(tables.contains("schema_migrations"));
         assert!(tables.contains("workspaces"));
         assert!(tables.contains("projects"));
+        assert!(tables.contains("operations"));
+        assert!(tables.contains("outbox_messages"));
         drop(conn);
         fs::remove_dir_all(db.parent().unwrap()).unwrap();
     }
@@ -252,26 +260,32 @@ mod tests {
         let db = temp_db();
         let mut conn = open(&db).unwrap();
 
-        // Establish a clean schema with the migration 0001 ledger row.
+        // Establish a clean schema with the real migration ledger rows.
         migrate(&mut conn, &migrations_dir()).unwrap();
 
-        // Seed a ledger row whose checksum disagrees with the migration file.
+        // Seed a ledger row for a version whose checksum disagrees with the
+        // file presented by the next migrate() call. The file name's digit
+        // prefix must parse to the same version (9001) the ledger row uses.
+        let next_version = 9_001_i64;
         let now = now_ms().unwrap();
         conn.execute(
             "INSERT INTO schema_migrations (version, name, checksum, applied_at)
-             VALUES (2, '0002_fake.sql', 'deadbeef', ?1)",
-            [now],
+             VALUES (?1, '0000009001_fake.sql', 'deadbeef', ?2)",
+            rusqlite::params![next_version, now],
         )
         .unwrap();
 
         // A migration file whose checksum differs from the ledger must fail
-        // closed, and must not create any table.
+        // closed, and must not apply.
         let bad_dir = temp_dir();
-        fs::write(bad_dir.join("0002_fake.sql"), "SELECT 1;").unwrap();
+        fs::write(bad_dir.join("0000009001_fake.sql"), "SELECT 1;").unwrap();
         let result = migrate(&mut conn, &bad_dir);
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(matches!(err, Error::ChecksumMismatch { version: 2, .. }));
+        assert!(matches!(
+            err,
+            Error::ChecksumMismatch { version: 9_001, .. }
+        ));
         let tables: String = conn
             .query_row(
                 "SELECT group_concat(name) FROM sqlite_master WHERE type = 'table'",

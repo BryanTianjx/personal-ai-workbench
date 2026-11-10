@@ -36,6 +36,23 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      # The Tauri shell embeds the frontend at compile time: tauri-build
+      # fails if `dist/` does not exist, so the frontend is built before any
+      # Rust step (E1 Tauri-shell unit).
+      - name: Set up Node (pinned)
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Set up pnpm (pinned)
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: .
+      - name: Build frontend (embedded by tauri-build)
+        run: pnpm build
+        working-directory: .
       - name: Install Rust toolchain (pinned)
         run: rustup show active-toolchain || rustup toolchain install
       - name: Cache cargo
