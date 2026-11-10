@@ -12,7 +12,9 @@
 use std::path::Path;
 
 use paw_application::ports::workspace_repository::{WorkspaceRepository, WorkspaceRepositoryError};
-use paw_domain::work_management::{ParseError, Project, ProjectId, Workspace, WorkspaceId};
+use paw_domain::work_management::{
+    AreaId, GoalId, ParseError, Project, ProjectId, ProjectStatus, Workspace, WorkspaceId,
+};
 
 use crate::sqlite::{self, Error};
 
@@ -73,6 +75,29 @@ fn repo_constraint_error(e: rusqlite::Error, id: &str) -> RepoError {
     }
 }
 
+/// Row shape: id, workspace_id, goal_id, area_id, name, description, status.
+fn row_to_project(row: &rusqlite::Row<'_>) -> Result<Project, RepoError> {
+    let goal_id: Option<String> = row.get("goal_id")?;
+    let area_id: Option<String> = row.get("area_id")?;
+    let status: String = row.get("status")?;
+    Ok(Project {
+        id: ProjectId::new(row.get::<_, String>("id")?)?,
+        workspace_id: WorkspaceId::new(row.get::<_, String>("workspace_id")?)?,
+        goal_id: match goal_id {
+            Some(v) => Some(GoalId::new(v)?),
+            None => None,
+        },
+        area_id: match area_id {
+            Some(v) => Some(AreaId::new(v)?),
+            None => None,
+        },
+        name: row.get("name")?,
+        description: row.get("description")?,
+        status: ProjectStatus::parse(&status)
+            .expect("project status values are constrained by the schema CHECK"),
+    })
+}
+
 pub struct SqliteWorkspaceRepository {
     conn: rusqlite::Connection,
 }
@@ -117,6 +142,24 @@ impl WorkspaceRepository for SqliteWorkspaceRepository {
             .map_err(WorkspaceRepositoryError::from)
     }
 
+    fn update_project(
+        &self,
+        workspace_id: &WorkspaceId,
+        project: &Project,
+    ) -> Result<(), WorkspaceRepositoryError> {
+        self.update_project_inner(workspace_id, project)
+            .map_err(WorkspaceRepositoryError::from)
+    }
+
+    fn delete_project(
+        &self,
+        workspace_id: &WorkspaceId,
+        project_id: &ProjectId,
+    ) -> Result<(), WorkspaceRepositoryError> {
+        self.delete_project_inner(workspace_id, project_id)
+            .map_err(WorkspaceRepositoryError::from)
+    }
+
     fn delete_workspace(&self, workspace_id: &WorkspaceId) -> Result<(), WorkspaceRepositoryError> {
         self.delete_workspace_inner(workspace_id)
             .map_err(WorkspaceRepositoryError::from)
@@ -143,7 +186,7 @@ impl SqliteWorkspaceRepository {
 
     fn list_projects_inner(&self, workspace_id: &WorkspaceId) -> Result<Vec<Project>, RepoError> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, workspace_id, name FROM projects
+            "SELECT id, workspace_id, goal_id, area_id, name, description, status FROM projects
              WHERE workspace_id = ?1
              ORDER BY created_at ASC",
         )?;
@@ -152,14 +195,7 @@ impl SqliteWorkspaceRepository {
         // Propagate iteration errors: `while let Ok(...)` would silently
         // truncate the list on a mid-iteration failure.
         while let Some(row) = rows.next()? {
-            let id = ProjectId::new(row.get::<_, String>(0)?)?;
-            let workspace = WorkspaceId::new(row.get::<_, String>(1)?)?;
-            let name: String = row.get(2)?;
-            out.push(Project {
-                id,
-                workspace_id: workspace,
-                name,
-            });
+            out.push(row_to_project(row)?);
         }
         Ok(out)
     }
@@ -182,7 +218,8 @@ impl SqliteWorkspaceRepository {
     ) -> Result<(), RepoError> {
         // Enforce the port's invariant: a project must belong to the requested
         // workspace. The composite UNIQUE(id, workspace_id) in the schema
-        // additionally prevents cross-workspace identifier collisions.
+        // additionally prevents cross-workspace identifier collisions, and
+        // the composite goal/area FKs refuse links into other workspaces.
         if project.workspace_id != *workspace_id {
             return Err(RepoError::Constraint(format!(
                 "project {} does not belong to workspace {}",
@@ -192,12 +229,17 @@ impl SqliteWorkspaceRepository {
         }
         self.conn
             .execute(
-                "INSERT INTO projects (id, workspace_id, name, status, created_at, updated_at)
-                 VALUES (?1, ?2, ?3, 'active', ?4, ?4)",
+                "INSERT INTO projects (id, workspace_id, goal_id, area_id, name, description, \
+                 status, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)",
                 params![
                     project.id.as_str(),
                     project.workspace_id.as_str(),
+                    project.goal_id.as_ref().map(|g| g.as_str().to_string()),
+                    project.area_id.as_ref().map(|a| a.as_str().to_string()),
                     project.name,
+                    project.description,
+                    project.status.as_str(),
                     sqlite::now_ms()?,
                 ],
             )
@@ -205,12 +247,84 @@ impl SqliteWorkspaceRepository {
         Ok(())
     }
 
+    fn update_project_inner(
+        &self,
+        workspace_id: &WorkspaceId,
+        project: &Project,
+    ) -> Result<(), RepoError> {
+        if project.workspace_id != *workspace_id {
+            return Err(RepoError::Constraint(format!(
+                "project {} does not belong to workspace {}",
+                project.id.as_str(),
+                workspace_id.as_str()
+            )));
+        }
+        let changed = self
+            .conn
+            .execute(
+                "UPDATE projects SET goal_id = ?1, area_id = ?2, name = ?3, description = ?4, \
+                 status = ?5, updated_at = ?6
+                 WHERE id = ?7 AND workspace_id = ?8",
+                params![
+                    project.goal_id.as_ref().map(|g| g.as_str().to_string()),
+                    project.area_id.as_ref().map(|a| a.as_str().to_string()),
+                    project.name,
+                    project.description,
+                    project.status.as_str(),
+                    sqlite::now_ms()?,
+                    project.id.as_str(),
+                    workspace_id.as_str(),
+                ],
+            )
+            .map_err(|e| repo_constraint_error(e, project.id.as_str()))?;
+        if changed == 0 {
+            return Err(RepoError::NotFound);
+        }
+        Ok(())
+    }
+
+    fn delete_project_inner(
+        &self,
+        workspace_id: &WorkspaceId,
+        project_id: &ProjectId,
+    ) -> Result<(), RepoError> {
+        // Tasks referencing the project hold a RESTRICT composite FK: the
+        // caller unbinds/deletes them explicitly first — no silent cascade.
+        let changed = self
+            .conn
+            .execute(
+                "DELETE FROM projects WHERE id = ?1 AND workspace_id = ?2",
+                params![project_id.as_str(), workspace_id.as_str()],
+            )
+            .map_err(RepoError::from)?;
+        if changed == 0 {
+            return Err(RepoError::NotFound);
+        }
+        Ok(())
+    }
+
     fn delete_workspace_inner(&self, workspace_id: &WorkspaceId) -> Result<(), RepoError> {
-        // Port contract: delete the workspace and all its projects. Both
-        // steps commit atomically; a failure rolls the whole deletion back.
+        // Port contract: delete the workspace and all its records, in child
+        // dependency order (tasks → projects → goals → areas → workspace).
+        // Everything commits atomically; a failure rolls the whole deletion
+        // back. Audit rows (migration 0003) hold a RESTRICT FK and are not
+        // deleted: a workspace with audit history is refused until the E3
+        // audit retention policy lands.
         let tx = self.conn.unchecked_transaction()?;
         tx.execute(
+            "DELETE FROM tasks WHERE workspace_id = ?1",
+            params![workspace_id.as_str()],
+        )?;
+        tx.execute(
             "DELETE FROM projects WHERE workspace_id = ?1",
+            params![workspace_id.as_str()],
+        )?;
+        tx.execute(
+            "DELETE FROM goals WHERE workspace_id = ?1",
+            params![workspace_id.as_str()],
+        )?;
+        tx.execute(
+            "DELETE FROM areas WHERE workspace_id = ?1",
             params![workspace_id.as_str()],
         )?;
         tx.execute(
@@ -219,7 +333,7 @@ impl SqliteWorkspaceRepository {
         )?;
         if tx.changes() == 0 {
             // No workspace row was deleted; the transaction (including any
-            // project deletes) is rolled back when `tx` drops.
+            // child deletes) is rolled back when `tx` drops.
             return Err(RepoError::NotFound);
         }
         tx.commit()?;
@@ -266,6 +380,10 @@ mod tests {
             &Project {
                 id: proj_in_w1.clone(),
                 workspace_id: w1.clone(),
+                goal_id: None,
+                area_id: None,
+                description: None,
+                status: ProjectStatus::Active,
                 name: "p1".into(),
             },
         )
@@ -278,6 +396,10 @@ mod tests {
             &Project {
                 id: proj_in_w2.clone(),
                 workspace_id: w1.clone(),
+                goal_id: None,
+                area_id: None,
+                description: None,
+                status: ProjectStatus::Active,
                 name: "p2".into(),
             },
         );
@@ -309,6 +431,10 @@ mod tests {
             &Project {
                 id: proj_in_w2.clone(),
                 workspace_id: w1.clone(),
+                goal_id: None,
+                area_id: None,
+                description: None,
+                status: ProjectStatus::Active,
                 name: "p3".into(),
             },
         )

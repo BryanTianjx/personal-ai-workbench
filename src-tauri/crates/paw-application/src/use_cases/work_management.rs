@@ -272,6 +272,22 @@ mod tests {
         ) -> Result<(), WorkspaceRepositoryError> {
             Err(WorkspaceRepositoryError::WorkspaceNotFound)
         }
+
+        fn update_project(
+            &self,
+            _workspace_id: &WorkspaceId,
+            _project: &Project,
+        ) -> Result<(), WorkspaceRepositoryError> {
+            Err(WorkspaceRepositoryError::Invariant("not supported".into()))
+        }
+
+        fn delete_project(
+            &self,
+            _workspace_id: &WorkspaceId,
+            _project_id: &ProjectId,
+        ) -> Result<(), WorkspaceRepositoryError> {
+            Err(WorkspaceRepositoryError::Invariant("not supported".into()))
+        }
     }
 
     /// Authorization fake: grants `grant_actor`, denies everyone else, and
@@ -479,6 +495,22 @@ mod tests {
             _workspace_id: &WorkspaceId,
         ) -> Result<(), WorkspaceRepositoryError> {
             Err(WorkspaceRepositoryError::WorkspaceNotFound)
+        }
+
+        fn update_project(
+            &self,
+            _workspace_id: &WorkspaceId,
+            _project: &Project,
+        ) -> Result<(), WorkspaceRepositoryError> {
+            Err(WorkspaceRepositoryError::Invariant("not supported".into()))
+        }
+
+        fn delete_project(
+            &self,
+            _workspace_id: &WorkspaceId,
+            _project_id: &ProjectId,
+        ) -> Result<(), WorkspaceRepositoryError> {
+            Err(WorkspaceRepositoryError::Invariant("not supported".into()))
         }
     }
 
