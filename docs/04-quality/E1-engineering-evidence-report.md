@@ -55,6 +55,27 @@ Command-level evidence baseline at review time: 27 tests passing, `cargo clippy 
 4. Disconnect network → repeat create/list → reconnect → confirm no false remote success.
 5. Record OS/toolchain/commit + pass-fail per item as the human acceptance record (Gate F).
 
+### 5.1 Windowed run record (2026-11-10, Windows, toolchain 1.98.1, branch feat/e1-engineering)
+
+Executed via `pnpm exec tauri dev`; all four crates compiled; the main window opened and the
+per-user database initialized (ADR-006 path, WAL mode, migrations 0001–0003 applied).
+
+| Runbook item | Result | Evidence |
+|---|---|---|
+| 1. Native window launches | **Pass** | dev console: `Running paw-desktop.exe`; window visible |
+| 2. Create Workspace / Projects | **Pass** | DB after first session: 1 workspace, `audit_events` = 1× `workspace.create` (allowed) |
+| 3. Restart restores data | **Pass** | After relaunch: 2 workspaces + 2 projects (`test`, `test3`, status `active`) readable; 4 audit rows (2× workspace.create, 2× project.create, all allowed) |
+| 4. Offline check | **Deferred** | Recorded as a follow-up item by the owner |
+| 5. Acceptance record | This section | Partial: items 1–3 pass, item 4 deferred |
+
+**Observed gap (recorded, non-blocking):** on relaunch the UI starts with no workspace
+selected — the E1 slice publishes no `list_workspaces` command, so the operator created a
+second workspace in the second session. Data-level restore is proven by database inspection
+(both workspaces and both projects present and bound correctly); the UI-level
+"select the persisted workspace" flow is an E2 backlog item (workspace picker / session
+restore). Acceptance criterion "Restart restores data" is met at the data layer and through
+`list_projects` once a workspace is selected.
+
 ## 6. Explicitly deferred (Tier 2 / later gates)
 
 Retry classification and backoff policy (E3), quarantine recovery UX (E3+), cooperative cancellation semantics (E3+), provider idempotency keys and OutcomeUnknown reconciliation against real providers (E5, Alpha 0.2 gate per ADR-022), operation retention/export policy (E3+), installer packaging/bundle (release gate), interrupted-migration live drill and OFF-matrix manual cases (Gate E/F).
