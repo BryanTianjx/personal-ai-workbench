@@ -53,7 +53,8 @@ Alpha 0.1 起交付与验收目标为 Windows（Windows-only，见 ADR-021）；
 
 - **E0.2.2.3 Final Documentation Remediation & Freeze Gate：** Completed as documentation/design baseline only; software implementation and runtime verification are not implied.
 - **E0.3：** Architecture Consolidation & Engineering Readiness — E0.3.1 review and E0.3.2 ratification completed on 2026-11-08 (work delivered on docs/e0.3-architecture-consolidation, merged into main; branch deleted). ADR-017～020 are Accepted as the design baseline; implementation remains Not Implemented and verification Not Verified.
-- **E1：** Engineering skeleton and first Windows vertical slice — work packages E1-01…E1-09 implemented on feat/e1-engineering with automated evidence (27 tests, clippy/fmt clean; see [E1 engineering evidence report](docs/04-quality/E1-engineering-evidence-report.md)). Windowed Gate E run and milestone acceptance remain explicit human steps; nothing here claims runtime acceptance yet.
+- **E1：** Engineering skeleton and first Windows vertical slice — work packages E1-01…E1-10 implemented and merged to main with automated evidence (see [E1 engineering evidence report](docs/04-quality/E1-engineering-evidence-report.md); §5.1 records the Gate E windowed run: items 1–3 pass, offline check deferred, UI workspace-picker gap logged to E2 and repaired there).
+- **E2：** Work Management vertical slice — work packages E2-01…E2-06 implemented on feat/e2-work-management with automated evidence (62 tests with --no-fail-fast, clippy/fmt clean; see [E2 engineering evidence report](docs/04-quality/E2-engineering-evidence-report.md)). Areas/Goals/Tasks with project links, scoped FTS5 search (CJK-aware), attachments with deletion guards, real-data Dashboard and the full Work Management UI are implemented; the windowed Gate E run and milestone acceptance remain explicit human steps.
 
 ## 文档入口
 
