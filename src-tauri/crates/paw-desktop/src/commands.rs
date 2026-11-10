@@ -36,13 +36,17 @@ pub struct WorkManagementApi {
     goals: SqliteGoalRepository,
     tasks: SqliteTaskRepository,
     search: paw_infrastructure::search::SqliteSearchService,
+    attachments:
+        paw_infrastructure::repositories::attachment_repository::SqliteAttachmentRepository,
+    file_store: paw_infrastructure::filesystem::FsManagedFileStore,
     authorizer: LocalSingleUserAuthorizer,
     audit: SqliteAuditSink,
 }
 
 impl WorkManagementApi {
     /// Open the command surface over `db_path`. The database must already
-    /// carry the current schema (migrations run before this call).
+    /// carry the current schema (migrations run before this call). Managed
+    /// attachment bytes live in a sibling `attachments/` directory (E2-04).
     pub fn open(db_path: &Path) -> Result<Self, paw_infrastructure::sqlite::Error> {
         Ok(Self {
             workspaces: SqliteWorkspaceRepository::open(db_path)?,
@@ -50,6 +54,20 @@ impl WorkManagementApi {
             goals: SqliteGoalRepository::open(db_path)?,
             tasks: SqliteTaskRepository::open(db_path)?,
             search: paw_infrastructure::search::SqliteSearchService::open(db_path)?,
+            attachments:
+                paw_infrastructure::repositories::attachment_repository::SqliteAttachmentRepository::open(
+                    db_path,
+                )?,
+            file_store: paw_infrastructure::filesystem::FsManagedFileStore::open(
+                db_path
+                    .parent()
+                    .expect("db_path lives inside the app data directory"),
+            )
+            .map_err(|e| {
+                paw_infrastructure::sqlite::Error::Io {
+                    source: std::io::Error::other(e.to_string()),
+                }
+            })?,
             authorizer: LocalSingleUserAuthorizer,
             audit: SqliteAuditSink::open(db_path)?,
         })
@@ -289,6 +307,78 @@ impl WorkManagementApi {
         use_cases::search(&self.search, workspace_id, query, limit).map_err(CommandError::from)
     }
 
+    // -- Attachments (E2-04) --------------------------------------------------
+
+    pub fn add_attachment(
+        &self,
+        workspace_id: &WorkspaceId,
+        owner: paw_application::ports::attachment_repository::AttachmentOwner,
+        owner_id: &str,
+        file_name: &str,
+        bytes: &[u8],
+    ) -> Result<paw_application::ports::attachment_repository::Attachment, WorkManagementError>
+    {
+        let ctx = self.context();
+        use_cases::attachment::add_attachment(
+            &self.attachments,
+            &self.file_store,
+            &self.authorizer,
+            &self.audit,
+            &ctx,
+            workspace_id,
+            owner,
+            owner_id,
+            file_name,
+            bytes,
+        )
+    }
+
+    pub fn list_attachments(
+        &self,
+        workspace_id: &WorkspaceId,
+        owner: paw_application::ports::attachment_repository::AttachmentOwner,
+        owner_id: &str,
+    ) -> Result<Vec<paw_application::ports::attachment_repository::Attachment>, WorkManagementError>
+    {
+        use_cases::attachment::list_attachments(&self.attachments, workspace_id, owner, owner_id)
+    }
+
+    pub fn read_attachment(
+        &self,
+        workspace_id: &WorkspaceId,
+        attachment_id: &str,
+    ) -> Result<
+        (
+            paw_application::ports::attachment_repository::Attachment,
+            Vec<u8>,
+        ),
+        WorkManagementError,
+    > {
+        use_cases::attachment::read_attachment(
+            &self.attachments,
+            &self.file_store,
+            workspace_id,
+            attachment_id,
+        )
+    }
+
+    pub fn remove_attachment(
+        &self,
+        workspace_id: &WorkspaceId,
+        attachment_id: &str,
+    ) -> Result<(), WorkManagementError> {
+        let ctx = self.context();
+        use_cases::attachment::remove_attachment(
+            &self.attachments,
+            &self.file_store,
+            &self.authorizer,
+            &self.audit,
+            &ctx,
+            workspace_id,
+            attachment_id,
+        )
+    }
+
     // -- Tasks --------------------------------------------------------------
 
     pub fn create_task(
@@ -414,6 +504,10 @@ pub enum CommandError {
     TaskStatusInvalid,
     /// The search query was empty or carried no searchable terms (E2-03).
     InvalidSearchQuery,
+    /// The referenced attachment does not exist (E2-04).
+    AttachmentNotFound,
+    /// The attachment's owner record does not exist (E2-04).
+    OwnerNotFound,
     /// Fresh authorization refused the protected side effect (E1-09).
     Denied,
     /// Any other failure; details stay on the Rust side.
@@ -447,6 +541,12 @@ impl From<WorkManagementError> for CommandError {
             ) => Self::TaskNotFound,
             WorkManagementError::Authorization(_) => Self::Denied,
             WorkManagementError::TaskTransition { .. } => Self::TaskStatusInvalid,
+            WorkManagementError::Attachment(
+                paw_application::ports::attachment_repository::AttachmentRepositoryError::AttachmentNotFound,
+            ) => Self::AttachmentNotFound,
+            WorkManagementError::Attachment(
+                paw_application::ports::attachment_repository::AttachmentRepositoryError::OwnerNotFound,
+            ) => Self::OwnerNotFound,
             // Invariant violations and repository-level invariant failures
             // stay generic on the boundary.
             _ => Self::Unexpected,
@@ -753,6 +853,80 @@ pub fn search(
         .lock()
         .expect("WorkManagementApi mutex must not be poisoned");
     api.search(&workspace_id, &query, limit.unwrap_or(20))
+}
+
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub fn add_attachment(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    owner_type: String,
+    owner_id: String,
+    file_name: String,
+    bytes: Vec<u8>,
+) -> Result<paw_application::ports::attachment_repository::Attachment, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    let owner = paw_application::ports::attachment_repository::AttachmentOwner::parse(&owner_type)
+        .ok_or(CommandError::Unexpected)?;
+    Ok(api.add_attachment(&workspace_id, owner, &owner_id, &file_name, &bytes)?)
+}
+
+#[tauri::command]
+pub fn list_attachments(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    owner_type: String,
+    owner_id: String,
+) -> Result<Vec<paw_application::ports::attachment_repository::Attachment>, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    let owner = paw_application::ports::attachment_repository::AttachmentOwner::parse(&owner_type)
+        .ok_or(CommandError::Unexpected)?;
+    Ok(api.list_attachments(&workspace_id, owner, &owner_id)?)
+}
+
+#[tauri::command]
+pub fn read_attachment(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    attachment_id: String,
+) -> Result<paw_application::ports::attachment_repository::Attachment, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    // Metadata returns as the command result; bytes are delivered through
+    // the read_attachment_bytes command so a huge payload never serializes
+    // together with the metadata.
+    let (attachment, _bytes) = api.read_attachment(&workspace_id, &attachment_id)?;
+    Ok(attachment)
+}
+
+#[tauri::command]
+pub fn read_attachment_bytes(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    attachment_id: String,
+) -> Result<Vec<u8>, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    let (_attachment, bytes) = api.read_attachment(&workspace_id, &attachment_id)?;
+    Ok(bytes)
+}
+
+#[tauri::command]
+pub fn remove_attachment(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    attachment_id: String,
+) -> Result<(), CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    Ok(api.remove_attachment(&workspace_id, &attachment_id)?)
 }
 
 #[cfg(test)]

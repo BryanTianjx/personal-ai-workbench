@@ -98,6 +98,11 @@ pub fn run() {
             commands::delete_task,
             commands::list_tasks,
             commands::search,
+            commands::add_attachment,
+            commands::list_attachments,
+            commands::read_attachment,
+            commands::read_attachment_bytes,
+            commands::remove_attachment,
         ])
         .setup(|app| {
             let api = bootstrap_state(app)?;

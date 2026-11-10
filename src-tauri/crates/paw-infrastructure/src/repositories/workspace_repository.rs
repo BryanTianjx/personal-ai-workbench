@@ -317,6 +317,20 @@ impl SqliteWorkspaceRepository {
     ) -> Result<(), RepoError> {
         // Tasks referencing the project hold a RESTRICT composite FK: the
         // caller unbinds/deletes them explicitly first — no silent cascade.
+        // Attachments hold metadata referencing this owner: refuse while any
+        // remain so the stored bytes are never orphaned silently (E2-04).
+        let attachments: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM attachments WHERE owner_type = 'project' AND owner_id = ?1 AND workspace_id = ?2",
+            params![project_id.as_str(), workspace_id.as_str()],
+            |r| r.get(0),
+        )?;
+        if attachments > 0 {
+            return Err(RepoError::Constraint(format!(
+                "project {} still has {} attachment(s); remove them first",
+                project_id.as_str(),
+                attachments
+            )));
+        }
         let changed = self
             .conn
             .execute(
@@ -337,7 +351,18 @@ impl SqliteWorkspaceRepository {
         // Everything commits atomically; a failure rolls the whole deletion
         // back. Audit rows (migration 0003) hold a RESTRICT FK and are not
         // deleted: a workspace with audit history is refused until the E3
-        // audit retention policy lands.
+        // audit retention policy lands. Attachment metadata likewise
+        // refuses: stored bytes must be removed explicitly first (E2-04).
+        let attachments: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM attachments WHERE workspace_id = ?1",
+            params![workspace_id.as_str()],
+            |r| r.get(0),
+        )?;
+        if attachments > 0 {
+            return Err(RepoError::Constraint(format!(
+                "workspace still has {attachments} attachment(s); remove them first"
+            )));
+        }
         let tx = self.conn.unchecked_transaction()?;
         // Rebuildable projections are cleaned inside the same transaction.
         tx.execute(

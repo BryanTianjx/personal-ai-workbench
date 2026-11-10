@@ -240,6 +240,20 @@ impl SqliteTaskRepository {
         workspace_id: &WorkspaceId,
         task_id: &TaskId,
     ) -> Result<(), RepoError> {
+        // Attachment metadata references this owner: refuse while any remain
+        // so the stored bytes are never orphaned silently (E2-04).
+        let attachments: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM attachments WHERE owner_type = 'task' AND owner_id = ?1 \
+             AND workspace_id = ?2",
+            rusqlite::params![task_id.as_str(), workspace_id.as_str()],
+            |r| r.get(0),
+        )?;
+        if attachments > 0 {
+            return Err(RepoError::Constraint(format!(
+                "task {} still has {attachments} attachment(s); remove them first",
+                task_id.as_str()
+            )));
+        }
         let changed = self
             .conn
             .execute(

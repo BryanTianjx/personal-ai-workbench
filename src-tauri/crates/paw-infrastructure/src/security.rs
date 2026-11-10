@@ -95,7 +95,9 @@ impl Authorizer for LocalSingleUserAuthorizer {
             | ProtectedAction::CreateTask { .. }
             | ProtectedAction::UpdateTask { .. }
             | ProtectedAction::TransitionTask { .. }
-            | ProtectedAction::DeleteTask { .. } => Ok(()),
+            | ProtectedAction::DeleteTask { .. }
+            | ProtectedAction::CreateAttachment { .. }
+            | ProtectedAction::DeleteAttachment { .. } => Ok(()),
         }
     }
 }

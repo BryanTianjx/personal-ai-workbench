@@ -8,6 +8,7 @@
 //! authorization-gated in E2.
 
 pub mod area;
+pub mod attachment;
 pub mod goal;
 pub mod project;
 pub mod task;
@@ -37,6 +38,8 @@ pub enum WorkManagementError {
     Authorization(AuthorizationError),
     /// A task status change that the domain state machine refuses.
     TaskTransition { from: TaskStatus, to: TaskStatus },
+    /// Typed attachment metadata rejection (E2-04).
+    Attachment(crate::ports::attachment_repository::AttachmentRepositoryError),
 }
 
 impl std::fmt::Display for WorkManagementError {
@@ -48,6 +51,7 @@ impl std::fmt::Display for WorkManagementError {
             Self::Task(e) => write!(f, "{e}"),
             Self::Validation(e) => write!(f, "{e}"),
             Self::Authorization(e) => write!(f, "{e}"),
+            Self::Attachment(e) => write!(f, "{e}"),
             Self::TaskTransition { from, to } => {
                 write!(f, "cannot move a task from {from} to {to}")
             }
@@ -64,6 +68,7 @@ impl std::error::Error for WorkManagementError {
             Self::Task(e) => Some(e),
             Self::Validation(e) => Some(e),
             Self::Authorization(e) => Some(e),
+            Self::Attachment(e) => Some(e),
             Self::TaskTransition { .. } => None,
         }
     }
@@ -102,6 +107,12 @@ impl From<AuthorizationError> for WorkManagementError {
 impl From<paw_domain::work_management::ValidationError> for WorkManagementError {
     fn from(e: paw_domain::work_management::ValidationError) -> Self {
         Self::Validation(e)
+    }
+}
+
+impl From<crate::ports::attachment_repository::AttachmentRepositoryError> for WorkManagementError {
+    fn from(e: crate::ports::attachment_repository::AttachmentRepositoryError) -> Self {
+        Self::Attachment(e)
     }
 }
 

@@ -42,6 +42,11 @@ pub enum ProtectedAction {
     TransitionTask { workspace_id: WorkspaceId },
     /// Delete a task inside the given workspace.
     DeleteTask { workspace_id: WorkspaceId },
+    /// Add an attachment to a project or task (bytes go to the managed
+    /// file store; metadata to SQLite).
+    CreateAttachment { workspace_id: WorkspaceId },
+    /// Remove an attachment (metadata row + stored bytes).
+    DeleteAttachment { workspace_id: WorkspaceId },
 }
 
 impl ProtectedAction {
@@ -63,6 +68,8 @@ impl ProtectedAction {
             Self::UpdateTask { .. } => "task.update",
             Self::TransitionTask { .. } => "task.transition",
             Self::DeleteTask { .. } => "task.delete",
+            Self::CreateAttachment { .. } => "attachment.create",
+            Self::DeleteAttachment { .. } => "attachment.delete",
         }
     }
 
@@ -84,6 +91,9 @@ impl ProtectedAction {
             | Self::UpdateTask { workspace_id }
             | Self::TransitionTask { workspace_id }
             | Self::DeleteTask { workspace_id } => Some(workspace_id),
+            Self::CreateAttachment { workspace_id } | Self::DeleteAttachment { workspace_id } => {
+                Some(workspace_id)
+            }
         }
     }
 }
