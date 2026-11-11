@@ -9,6 +9,8 @@
 - Superseded：已被后续 ADR 取代，保留历史记录。
 - Deprecated：不再推荐，保留历史记录。
 
+ADR 状态、实现状态和验证状态必须分开记录。Accepted 不代表已实现或已验证。
+
 ## 决策索引
 
 | ADR | 标题 | 状态 |
@@ -29,16 +31,23 @@
 | [ADR-020](ADR-020-cross-domain-contract-versioning.md) | Cross-Domain Contract and Event Versioning | Accepted |
 | [ADR-021](ADR-021-stage-version-mapping-windows-only-alpha.md) | Stage-to-Version Mapping and Windows-Only Alpha 0.1 Delivery | Accepted |
 | [ADR-022](ADR-022-workbench-hermes-boundary.md) | Workbench ↔ Hermes Execution Boundary | Proposed |
+| [ADR-023](ADR-023-domain-plugin-model.md) | Domain Plugin Model and Static Registration First | Proposed (R1) |
+| [ADR-024](ADR-024-role-profile-model.md) | Role Profile Is a User Experience Profile, Not an Authorization Role | Proposed (R1) |
+| [ADR-025](ADR-025-workspace-composition.md) | Workspace Composition Is Separate from the Data Workspace Boundary | Proposed (R1) |
+| [ADR-026](ADR-026-capability-registry-and-ai-invocation.md) | Capability Registry and Governed AI Invocation | Proposed (R1) |
+| [ADR-027](ADR-027-first-party-domain-plugin-policy.md) | First-Party Domain Plugin Policy and Learning & Growth Boundary | Proposed (R1) |
+| [ADR-028](ADR-028-plugin-dependency-compatibility-governance.md) | Plugin Dependency and Compatibility Governance | Proposed (R1) |
+| [ADR-029](ADR-029-agent-invocation-security-and-approval.md) | Agent Invocation Security and Human Approval Binding | Proposed (R1) |
 
 ADR-007～012 未在当前基线中发现，不因新增 ADR 而补造或重新编号；如后续需要，应先核对历史决策来源和记录。
 
 ## ADR 记录规则
 
-每份 ADR 至少包含背景、决策驱动因素、候选方案（如适用）、决策、后果、显式风险与缓解措施、验证要求、决策状态、实施状态和验证状态。ADR 状态只表示决策状态；实现和验证状态必须单独记录。改变已接受的架构决策时，新增 ADR，不覆盖历史决策。
+每份 ADR 至少包含背景、决策驱动因素、候选方案（如适用）、决策、后果、显式风险与缓解措施、验证要求、决策状态、实施状态和验证状态。改变已接受的架构决策时，新增 ADR，不覆盖历史记录。
 
-E0.3.2 已于 2026-11-08 批准 ADR-017～020。其状态 Accepted 仅表示设计决策已批准；实现和验证状态仍分别为 Not Implemented / Not Verified。
+E0.3.2 已于 2026-11-08 批准 ADR-017～020。ADR-022 仍为 Proposed。ADR-023～029 R1 目前均为 Proposed / Not Implemented / Not Verified，等待人工逐份审批；不得将文档完成视为 Accepted。
 
+## Review artifacts
 
-## E0.3.1 review note
-
-ADR-017～020 已于 E0.3.2 完成正式批准，状态为 **Accepted**；E0.3.1 记录的澄清项为规范性约束。Accepted 不代表代码已实现或验证；实现和验证状态仍分别为 Not Implemented / Not Verified。
+- [ADR-023～029 R1 跨 ADR 一致性审查报告](../04-quality/ADR-023-029-R1-cross-adr-review.md)
+- [Hermes 受控审查任务包](../architecture/adr-023-029-hermes-task-package/README.md)
