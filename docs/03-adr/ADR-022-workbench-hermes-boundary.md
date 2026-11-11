@@ -1,6 +1,6 @@
 # ADR-022: Workbench ↔ Hermes Execution Boundary
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-08
 - **Decision scope:** External Agent runtime boundary for the first mediated provider (Hermes), prerequisite for Alpha 0.2 Agent enablement
 - **Implementation Status:** Not Implemented
@@ -52,4 +52,5 @@ Hermes interface versions change materially, additional providers onboard (gener
 
 ## Governance
 
-This ADR is Proposed. It must be ratified as Accepted before Alpha 0.2 enables any external Agent execution (roadmap Gate Alpha 0.2, stages E4–E5). Ratification does not imply implementation.
+Accepted by the repository owner on 2026-11-12 (recommended decision adopted per owner direction; conditions: each real provider enablement additionally requires its versioned compatibility test and operational guide per §1, and per-provider conformance suites per Validation required). Ratification does not imply implementation — both implementation and verification remain Not Implemented / Not Verified until the Hermes adapter work delivers.
+
