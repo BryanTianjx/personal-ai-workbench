@@ -54,6 +54,30 @@ Command-level evidence baseline at review time: 72 tests passing with `--no-fail
 7. Offline + restart: same as E2 runbook items 6–7 (offline remains the owner's deferred item from E1/E2 if still open).
 8. Record OS/toolchain/commit + pass-fail per item as the human acceptance record (Gate F).
 
+### 5.1 Windowed run record (2026-11-10, Windows, toolchain 1.98.1, branch feat/e3-reliability)
+
+Executed via `pnpm exec tauri dev`. One startup defect was found and fixed during the run:
+migration checksum line-ending sensitivity (git autocrlf rewrote working-tree file endings
+between checkouts; raw-bytes hashing failed closed) — fixed with line-ending-invariant
+checksums plus legacy ledger reconciliation (`574a9cd`, E2 report §5.1 records the same fix
+from its side of the run). The E2-era windowed run had already exercised the Work Management
+UI end to end; this run focused on the E3 additions.
+
+| Runbook item | Result | Notes |
+|---|---|---|
+| 1. Window opens; prior data restored | **Pass** | Startup clean after `574a9cd`; ledger reconciled, migrations 0004–0007 applied |
+| 2. Queue view visible; workspace-scoped | **Pass** | 操作队列 section rendered; initially empty — by design: the queue lists durable operation envelopes, and no Alpha 0.1 flow opened one yet |
+| 3–4. Export / purge envelopes | **Pass** after `c210adb` | The owner reported an empty queue with workspace content present; export/purge now run under their own durable envelopes (`data.export` workspace-scoped / `data.purge` system-scope, Succeeded/Failed transitions + attempt rows), making the queue verifiable; automated test asserts the succeeded envelope after export |
+| 5. Quarantined events + re-drive | **Verified at test level** | No quarantined messages existed in the windowed session (no failing consumers); re-drive semantics covered by the integration suite |
+| 6. Cancellation/reconcile buttons | **Verified at test level** | Contextual buttons land with running/outcome_unknown rows; semantics covered by the integration suite |
+| 7. Offline + restart | **Deferred** | Owner's standing deferred item (E1/E2/E3); to be closed together at the Alpha 0.1 release gate |
+| 8. Acceptance record | This section | Items 1–4 pass (3–4 with the envelope fix); 5–6 test-level; 7 deferred; owner accepted and directed the milestone merge |
+
+**Merge decision:** the owner accepted the run and directed the E2 and E3 milestone merges
+(E2 pushed as `9eec0af` after a proxy outage; E3 merged with this record). Outstanding
+follow-ups carried forward: offline acceptance items (E1/E2/E3), quarantined-event re-drive
+observed live when a consumer failure first occurs.
+
 ## 6. Explicitly deferred
 
 Provider-side reconciliation and idempotency keys (E5 — Alpha 0.2 gate per ADR-022); interrupted-migration live drill and OFF-matrix manual cases; plugin packaging/distribution and attachment content-addressing decisions (P1 gates, evidence-driven); background purge (explicitly excluded by policy).
