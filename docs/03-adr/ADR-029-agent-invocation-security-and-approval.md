@@ -2,8 +2,8 @@
 
 - **Status:** Accepted (R1)
 - **Decision status:** Accepted (repository owner decision, 2026-11-12; R1 clarifications are normative; implementation and verification remain separate gates)
-- **Implementation status:** Not Implemented
-- **Verification status:** Not Verified
+- **Implementation Status:** Implemented (E5) — E5-02…E5-06 deliver untrusted-input default deny, grant scope intersection, canonical plan digest, approval binding (digest / actor / Agent / workspace / capability and contract version / tool / target / material params / expiry / attempt policy), per-side-effect re-authorization, attempt trail, `OutcomeUnknown` with explicit reconciliation and redacted audit records. No external provider transport is enabled: ADR-022 remains the gate.
+- **Verification Status:** Partially Verified — the 10 pipeline conformance tests (E5 specification §11 items 1–8), the canonicalisation/digest mutation-sensitivity tests and the desktop e2e flow cover default deny, two-phase approval, denied approval, revocation between side effects, no-blind-retry and reconciliation. The Gate E windowed run, the human acceptance record and redaction under a real provider transport are **not yet verified**.
 - **Date:** 2026-11-11 (accepted 2026-11-12)
 - **Scope:** Agent-to-capability invocation, authorization, approval, side-effect execution and uncertain outcomes
 - **Related:** ADR-004, ADR-017, ADR-019, ADR-020, ADR-022, ADR-023, ADR-024, ADR-025, ADR-026, ADR-028; `agent-authorization-model.md`
@@ -101,7 +101,7 @@ Record invocation/Operation/attempt IDs, actor and Agent IDs, workspace, capabil
 - The approval lifecycle is more complex but avoids stale-plan approval reuse.
 - Operation reconciliation is required for external effects whose outcomes cannot be proven synchronously.
 
-## 6. Risks and mitigations
+## Risks and mitigations
 
 | Risk | Mitigation |
 |---|---|
@@ -112,7 +112,7 @@ Record invocation/Operation/attempt IDs, actor and Agent IDs, workspace, capabil
 | Sensitive payload appears in approval/audit | Redaction and data-minimization tests |
 | Agent result causes confused-deputy behavior | Re-resolve actor, workspace and resource scope for every follow-on invocation |
 
-## 7. Required validation
+## Validation required
 
 - Default-deny for missing or invalid context.
 - Cross-workspace and out-of-scope invocation denied through direct backend calls.
@@ -125,10 +125,10 @@ Record invocation/Operation/attempt IDs, actor and Agent IDs, workspace, capabil
 - Agent execution status cannot overwrite Operation state.
 - Secret redaction and audit completeness are verified.
 
-## 8. Implementation and verification boundary
+## Implementation and verification boundary
 
-This ADR is a policy decision proposal, not an implementation authorization. It does not specify Rust structs, canonical serialization library, digest algorithm, approval SQL schema, migration, UI implementation, or adapter code. Those require separate implementation specifications and human approval. Current state remains **Not Implemented / Not Verified**.
+This ADR records policy and does not itself specify Rust structs, canonical serialization library, digest algorithm, approval SQL schema, migration, UI implementation, or adapter code. Those were specified in the [E5 implementation specification](../05-architecture-evolution/E5-implementation-specification.md) and delivered under the separate E5 owner gate. Current state: **Implemented / Partially Verified** — the evidence and the remaining gaps are recorded in the [E5 engineering evidence report](../04-quality/E5-engineering-evidence-report.md).
 
-## 9. Revisit when
+## Revisit when
 
 PAW introduces multi-user delegated approvals, organization-wide policy administration, third-party Agent marketplace, remote execution workers, or provider-native delegated credentials. Revisit without weakening backend default-deny and per-side-effect authorization.

@@ -2,8 +2,8 @@
 
 - **Status:** Accepted (R1)
 - **Decision status:** Accepted (repository owner decision, 2026-11-12; R1 clarifications are normative; implementation and verification remain separate gates)
-- **Implementation status:** Not Implemented
-- **Verification status:** Not Verified
+- **Implementation Status:** Not Implemented — no `WorkspaceComposition` type, layout serialisation or persistence exists (the E2 dashboard read model is unrelated to this ADR).
+- **Verification Status:** Not Verified — cross-workspace composition denial, malformed-layout fallback and no-authorization-change-on-switch are untested because no implementation exists.
 - **Date:** 2026-11-11 (accepted 2026-11-12)
 - **Scope:** Role-based workspace composition and persistence
 - **Related:** ADR-006, ADR-013, ADR-017, ADR-020, ADR-024
@@ -27,7 +27,18 @@ PAW already uses Workspace as a logical data and security isolation boundary. Th
 - A Role Profile can be reused across workspaces, while each WorkspaceComposition remains explicitly scoped.
 - Composition migration/versioning is separate from domain data migration.
 
-## Required validation
+## Risks and controls
+
+Risk register carried over from the [R1 cross-ADR review](../04-quality/ADR-023-029-R1-cross-adr-review.md) §3 (risk-control column) and §7 (blocking conditions); the controls are normative per the owner's acceptance conditions.
+
+| Risk | Control |
+|---|---|
+| WorkspaceComposition is used as an isolation or tenancy control | Composition stores references and presentation configuration only; Data Workspace scope and backend authorization stay authoritative (ADR-003, ADR-006, ADR-017) |
+| Composition references unauthorized or cross-workspace records | Every referenced ID is resolved against the active Data Workspace and current policy at use time |
+| A malformed or incompatible composition blocks the UI or corrupts data | Safe-default fallback on missing/corrupt/unknown schema; composition never owns or duplicates domain records |
+| Composition migration is conflated with domain data migration | Separate versioning and migration tracks (ADR-020, ADR-028) |
+
+## Validation required
 
 Cross-workspace composition denial, malformed-layout fallback, profile reuse without data leakage, and no permission change on composition switch.
 

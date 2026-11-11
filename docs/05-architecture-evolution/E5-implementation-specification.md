@@ -118,7 +118,7 @@ Agent proposal(不可信)
 
 ## 11. Required invariants and conformance tests
 
-映射来源：ADR-026 R1 Validation additions、ADR-029 §7、授权模型 §9、adapter §7。实现期逐条落为 `#[test]`/集成测试：
+映射来源：ADR-026 R1 Validation additions、ADR-029 Validation required、授权模型 §9、adapter §7。实现期逐条落为 `#[test]`/集成测试：
 
 1. 默认拒绝：缺失/畸形/过期上下文；未知能力；不支持版本。
 2. 跨工作区/越范围调用经后端直接调用被拒（不是仅 UI 过滤）。

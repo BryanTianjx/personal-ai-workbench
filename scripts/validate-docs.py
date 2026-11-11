@@ -20,11 +20,6 @@ LIST = re.compile(r"^(?:[-+*]|[0-9]+[.)])\s+")
 LINK = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
 FENCE = re.compile(r"^\s{0,3}(`{3,}|~{3,})")
 ADR_LINK = re.compile(r"\[(ADR-[0-9]{3})\]\(([^)]+)\)")
-EXPECTED_ADR_NUMBERS = (
-    {f"{i:03d}" for i in range(1, 7)}
-    | {f"{i:03d}" for i in range(13, 17)}
-    | {f"{i:03d}" for i in range(17, 23)}
-)
 
 
 def fix_format(text: str) -> str:
@@ -154,18 +149,25 @@ def main() -> int:
 
     adr_index = DOCS / "03-adr" / "README.md"
     index_text = adr_index.read_text(encoding="utf-8")
-    indexed: set[str] = set()
+    indexed: dict[str, str] = {}
     for adr_id, target in ADR_LINK.findall(index_text):
         target_path = (adr_index.parent / target.split("#", 1)[0]).resolve()
         if not target_path.is_file():
             errors.append(f"ADR index: {adr_id} target missing: {target}")
-        indexed.add(adr_id)
+        if adr_id in indexed:
+            errors.append(f"ADR index: duplicate entry for {adr_id}")
+        indexed[adr_id] = target
     adr_files = sorted(DOCS.joinpath("03-adr").glob("ADR-[0-9][0-9][0-9]-*.md"))
-    actual = {p.stem.split("-", 2)[1] for p in adr_files}
-    if actual != EXPECTED_ADR_NUMBERS:
-        errors.append(f"ADR file set mismatch: expected={sorted(EXPECTED_ADR_NUMBERS)}, actual={sorted(actual)}")
-    if indexed != {f"ADR-{n}" for n in EXPECTED_ADR_NUMBERS}:
-        errors.append(f"ADR index mismatch: indexed={sorted(indexed)}")
+    actual = {f"ADR-{p.stem.split('-', 2)[1]}" for p in adr_files}
+    # docs/03-adr/README.md is the authoritative ADR set: every ADR file must be
+    # indexed, and every indexed ADR must exist (checked above via target_path).
+    # An ADR added or removed without the index is a governance defect.
+    if actual != set(indexed):
+        errors.append(
+            "ADR file set mismatch against index: "
+            f"not_indexed={sorted(actual - set(indexed))}, "
+            f"missing_on_disk={sorted(set(indexed) - actual)}"
+        )
     for path in adr_files:
         body = path.read_text(encoding="utf-8")
         for field in ("Implementation Status:", "Verification Status:"):

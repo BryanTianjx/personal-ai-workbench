@@ -141,7 +141,9 @@ R1 明确保留 Learning & Growth 的实体所有权、证据和 Assessment 语�
 
 随之生效的门禁状态：
 
-1. **E5 实现规格**：获授权将 [E5 实现规格草案 R0](../05-architecture-evolution/E5-implementation-specification-draft.md) 定稿为正式实现规格（ADR-026/029 为其治理基线）；PAW-INF-005/006 转 approved。
+1. **E5 实现规格**：获授权将 [E5 实现规格草案 R0](../05-architecture-evolution/E5-implementation-specification.md) 定稿为正式实现规格（ADR-026/029 为其治理基线）；PAW-INF-005/006 转 approved。
 2. **E7 实现规格**：未授权；E7（阶段归属见 roadmap v0.5.0）的实现规格与实现开工另行开闸。
 3. **实现开工**：未授权；E5 实现开工是独立 owner gate。
 4. 各 ADR 的 Implementation / Verification 状态保持 Not Implemented / Not Verified；Accepted 不改变实现与验证事实。
+
+> **后续状态更新（2026-11-12 之后）：** E5 交付并合入 `main` 后，ADR-026 / ADR-029 转为 **Implemented / Partially Verified**（自动证据与缺口见 [E5 工程证据报告](E5-engineering-evidence-report.md)）；ADR-023 / 024 / 025 / 027 / 028 仍为 Not Implemented / Not Verified（E7 范围）。本节 H0 决策记录保持原样，不追溯改写。

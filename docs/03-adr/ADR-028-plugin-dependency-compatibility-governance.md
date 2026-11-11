@@ -2,8 +2,8 @@
 
 - **Status:** Accepted (R1)
 - **Decision status:** Accepted (repository owner decision, 2026-11-12; R1 clarifications are normative; implementation and verification remain separate gates)
-- **Implementation status:** Not Implemented
-- **Verification status:** Not Verified
+- **Implementation Status:** Not Implemented — no plugin descriptor, dependency DAG, compatibility checker or lifecycle state machine exists. The only realised rule is capability **contract** version resolution: unsupported/unknown capability versions fail closed (E5-01, §4.3 applied to capability contracts, not to plugin packages).
+- **Verification Status:** Not Verified — dependency blocking, degraded-optional activation, cycle rejection, independent version dimensions, migration recovery and disable/removal preservation are all untested.
 - **Date:** 2026-11-11 (accepted 2026-11-12)
 - **Scope:** First-party plugin dependency declaration, compatibility, upgrade, deprecation and removal
 - **Related:** ADR-002, ADR-006, ADR-017, ADR-018, ADR-019, ADR-020, ADR-023, ADR-026, ADR-027
@@ -85,7 +85,7 @@ The registry distinguishes at least `registered`, `available`, `blocked`, `disab
 - The initial static graph remains simple; future dynamic distribution requires a superseding ADR.
 - A safe upgrade may require a staged migration and Operation reconciliation rather than an instantaneous toggle.
 
-## 6. Risks and mitigations
+## Risks and mitigations
 
 | Risk | Mitigation |
 |---|---|
@@ -95,7 +95,7 @@ The registry distinguishes at least `registered`, `available`, `blocked`, `disab
 | Disabled plugin strands an Operation | Drain/reconcile policy; preserve operation history; no blind cancellation |
 | Optional dependency hides a broken feature | Descriptor must declare fallback and feature-level degraded state |
 
-## 7. Required validation
+## Validation required
 
 - Missing required dependency blocks dependent capabilities.
 - Missing optional dependency activates only declared safe fallback.
@@ -106,10 +106,10 @@ The registry distinguishes at least `registered`, `available`, `blocked`, `disab
 - Disable/removal preserves data, audit history and Operation reconciliation.
 - Deprecation metadata and replacement links are surfaced.
 
-## 8. Implementation and verification boundary
+## Implementation and verification boundary
 
 This ADR defines policy only. It does not authorize Rust type design, SQL schema changes, migrations, plugin SDK APIs, runtime loading, or code modifications. Those require implementation specifications and separate human approval. Current state remains **Not Implemented / Not Verified**.
 
-## 9. Revisit when
+## Revisit when
 
 Third-party plugins, independent plugin distribution, remote updates, dynamic loading, multi-tenant shared plugin administration, or a separate plugin process is approved. Such a proposal must include signing, provenance, sandboxing, permission review, rollback, and supply-chain threat analysis.
