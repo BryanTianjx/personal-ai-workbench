@@ -16,7 +16,7 @@
 //! values never enter a plan (credential references are opaque ids), so the
 //! digest itself cannot leak secrets.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 /// Canonical-form version. Bump on any change to the encoding rules.
@@ -25,7 +25,7 @@ pub const CANONICALIZATION_VERSION: u32 = 1;
 /// A material invocation parameter value. The set is deliberately small:
 /// strings, integers, booleans and string lists cover capability inputs
 /// without admitting nested untrusted structures.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum PlanValue {
     Text(String),
@@ -47,7 +47,7 @@ impl PlanValue {
 /// (`E5-implementation-specification` §5/§6). Every field is material: a
 /// change to any of them changes the digest and invalidates a previously
 /// granted approval (ADR-029 §4.3).
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CanonicalPlan {
     pub capability_id: String,
     pub capability_contract_version: String,

@@ -339,7 +339,7 @@ pub trait Authorizer {
 /// subject to capabilities within a scope; possession of one capability
 /// never implies another. Grants are read fresh on every evaluation so
 /// revocation takes effect at the next side effect (ADR-029 §4.4).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct AgentGrant {
     /// Stable grant id (opaque).
     pub id: String,

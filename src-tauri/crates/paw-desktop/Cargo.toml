@@ -21,6 +21,8 @@ serde = { version = "1", features = ["derive"] }
 rusqlite = { version = "0.34", features = ["bundled"] }
 # Correlation ids for the E1-09 audit trail (per-command invocation)
 uuid = { version = "1", features = ["v7"] }
+# Parameters JSON parsing for agent invocation proposals (E5-06)
+serde_json = "1"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

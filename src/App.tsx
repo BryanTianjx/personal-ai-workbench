@@ -134,6 +134,75 @@ type QuarantinedMessage = {
   last_redrive_by: string | null;
 };
 
+type AgentRegistration = {
+  id: string;
+  workspace_id: string;
+  display_name: string;
+  adapter_kind: "fake" | "cli_hermes" | "cli_codex" | "api_custom";
+  declared_capabilities: string[];
+  status: "Active" | "Suspended" | "Retired";
+};
+
+type AgentExecution = {
+  id: string;
+  registration_id: string;
+  workspace_id: string;
+  capability_id: string;
+  capability_contract_version: string;
+  plan_digest: string;
+  tool_adapter: string;
+  target_identity: string;
+  material_params_digest: string;
+  parameters_json: string;
+  status:
+    | "Created"
+    | "Validating"
+    | "AwaitingApproval"
+    | "Approved"
+    | "Submitted"
+    | "Running"
+    | "Completed"
+    | "Failed"
+    | "Cancelled"
+    | "TimedOut"
+    | "OutcomeUnknown";
+  operation_id: string | null;
+};
+
+type ApprovalDisplay = {
+  execution_id: string;
+  capability_id: string;
+  capability_contract_version: string;
+  tool_adapter: string;
+  target_identity: string;
+  side_effect_set: string[];
+  risk_class: string;
+  expires_at_ms: number;
+  attempt_policy: string;
+};
+
+type AgentProposalOutcome = {
+  status: "completed" | "awaiting_approval";
+  execution: AgentExecution;
+  operation: { id: string; status: string; correlation_id: string } | null;
+  display: ApprovalDisplay | null;
+  summary: string | null;
+};
+
+// The pending approval the UI can decide on (one at a time in the E5
+// slice; the decision surface shows target/action/risk/expiry).
+type PendingApproval = {
+  executionId: string;
+  display: ApprovalDisplay;
+};
+
+type AgentRunOutcome = {
+  status: "completed" | "failed" | "unresolved";
+  execution: AgentExecution;
+  operation: { id: string; status: string; correlation_id: string };
+  summary: string;
+};
+
 type CommandError =
   | "empty_name"
   | "name_too_long"
@@ -227,6 +296,15 @@ export default function App() {
   const [knowledgeSource, setKnowledgeSource] = useState<KnowledgeRef["source"]>("web");
   const [knowledgeUri, setKnowledgeUri] = useState("");
 
+  // Agent governance (E5): registrations, executions, the pending approval
+  // surface, and the proposal form state.
+  const [agents, setAgents] = useState<AgentRegistration[]>([]);
+  const [agentExecutions, setAgentExecutions] = useState<AgentExecution[]>([]);
+  const [pendingApproval, setPendingApproval] = useState<PendingApproval | null>(null);
+  const [agentName, setAgentName] = useState("");
+  const [propAgent, setPropAgent] = useState<string>("");
+  const [propCapability, setPropCapability] = useState("work_management.task.create");
+
   const fail = (e: unknown) => setNotice(describe(e));
 
   // ---- Loaders ----
@@ -307,6 +385,13 @@ export default function App() {
       .catch(fail);
     invoke<KnowledgeRef[]>("list_knowledge_refs", { workspaceId, availability: null })
       .then((r) => setKnowledgeRefs(r))
+      .catch(fail);
+    // Agent governance lists (E5): registrations and executions.
+    invoke<AgentRegistration[]>("list_agents", { workspaceId })
+      .then((r) => setAgents(r))
+      .catch(fail);
+    invoke<AgentExecution[]>("list_agent_executions", { workspaceId, limit: 50 })
+      .then((r) => setAgentExecutions(r))
       .catch(fail);
   }, [workspaceId]);
 
@@ -612,6 +697,99 @@ export default function App() {
 
   const deleteKnowledgeRef = (id: string) =>
     run(() => invoke<void>("delete_knowledge_ref", { workspaceId, knowledgeRefId: id }), reloadAll);
+
+  // ---- Agent governance actions (E5) ----
+  // 注册后需为 agent 主体创建 grant（授权不来自注册声明或审批，ADR-029）。
+  const registerAgent = () =>
+    run(async () => {
+      const registration = await invoke<AgentRegistration>("register_agent", {
+        workspaceId,
+        displayName: agentName.trim(),
+        adapterKind: "fake",
+      });
+      // Seed a default grant for the low-risk task capability so the slice
+      // is usable end to end; admin can revoke it via the grant list.
+      await invoke<string>("create_agent_grant", {
+        workspaceId,
+        subjectId: `agent:${registration.id}`,
+        capabilities: ["work_management.task.create"],
+        ttlMs: null,
+      });
+      setNotice(
+        `已注册 agent「${registration.display_name}」并授予 work_management.task.create（可撤销）`,
+      );
+      setAgentName("");
+    }, reloadAll);
+
+  const updateAgentStatus = (id: string, newStatus: AgentRegistration["status"]) =>
+    run(
+      () =>
+        invoke<AgentRegistration>("update_agent_registration", {
+          workspaceId,
+          registrationId: id,
+          newStatus,
+        }),
+      reloadAll,
+    );
+
+  const proposeInvocation = () => {
+    const registration = agents.find((a) => a.id === propAgent) ?? agents[0];
+    if (!registration) {
+      setNotice("请先注册一个 agent。");
+      return;
+    }
+    run(async () => {
+      const outcome = await invoke<AgentProposalOutcome>("propose_agent_invocation", {
+        workspaceId,
+        registrationId: registration.id,
+        capabilityId: propCapability,
+        contractVersion: "1.0.0",
+        parametersJson: "{}",
+      });
+      if (outcome.status === "awaiting_approval" && outcome.display) {
+        setPendingApproval({
+          executionId: outcome.display.execution_id,
+          display: outcome.display,
+        });
+        setNotice("高风险能力：请在审批面板确认后执行。");
+      } else {
+        setNotice(
+          `调用完成：${outcome.execution.status}（操作 ${outcome.operation?.status ?? "n/a"}${outcome.summary ? `，${outcome.summary}` : ""}）`,
+        );
+      }
+    }, reloadAll);
+  };
+
+  const decideApproval = (approve: boolean) => {
+    if (!pendingApproval) return;
+    const { executionId } = pendingApproval;
+    setPendingApproval(null);
+    run(async () => {
+      const outcome = await invoke<AgentRunOutcome | null>("decide_approval", {
+        workspaceId,
+        executionId,
+        approve,
+      });
+      setNotice(
+        approve
+          ? outcome
+            ? `审批后执行：${outcome.status}（${outcome.summary}）`
+            : "审批后无运行结果。"
+          : "已拒绝并取消该执行。",
+      );
+    }, reloadAll);
+  };
+
+  const reconcileExecution = (id: string, complete: boolean) =>
+    run(
+      () =>
+        invoke<AgentExecution>("reconcile_agent_execution", {
+          workspaceId,
+          executionId: id,
+          complete,
+        }),
+      reloadAll,
+    );
 
   // ---- Operation queue actions (E3-04) ----
   const cancelOperation = (op: OperationRow) =>
@@ -1209,6 +1387,115 @@ export default function App() {
                   <button onClick={() => deleteKnowledgeRef(k.id)} disabled={busy}>
                     删除
                   </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          {/* Agent governance (E5) */}
+          <section>
+            <h2>Agent 协作</h2>
+            <p>
+              注册的 agent 以自身主体身份经能力门禁调用（默认拒绝，按 grant 授权）；高风险能力需人工审批，
+              审批绑定精确计划摘要；不确定外部结果保持未知状态等待对账，不盲重试。
+            </p>
+            <input
+              value={agentName}
+              onChange={(e) => setAgentName(e.target.value)}
+              placeholder="agent 名称"
+              disabled={busy}
+            />
+            <button onClick={registerAgent} disabled={busy || !agentName.trim()}>
+              注册 agent
+            </button>
+            <ul>
+              {agents.length === 0 && <li>无注册 agent。</li>}
+              {agents.map((a) => (
+                <li key={a.id}>
+                  <strong>{a.display_name}</strong>（{a.adapter_kind}，{a.status}）{" "}
+                  {a.status === "Active" && (
+                    <button onClick={() => updateAgentStatus(a.id, "Suspended")} disabled={busy}>
+                      暂停
+                    </button>
+                  )}
+                  {a.status === "Suspended" && (
+                    <button onClick={() => updateAgentStatus(a.id, "Active")} disabled={busy}>
+                      恢复
+                    </button>
+                  )}
+                  {a.status !== "Retired" && (
+                    <button onClick={() => updateAgentStatus(a.id, "Retired")} disabled={busy}>
+                      退役
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+            <h3>发起受控调用</h3>
+            <select
+              value={propAgent || agents[0]?.id || ""}
+              onChange={(e) => setPropAgent(e.target.value)}
+              disabled={busy || agents.length === 0}
+            >
+              {agents.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.display_name}
+                </option>
+              ))}
+            </select>
+            <select
+              value={propCapability}
+              onChange={(e) => setPropCapability(e.target.value)}
+              disabled={busy}
+            >
+              <option value="work_management.task.create">
+                work_management.task.create（低风险，需 grant）
+              </option>
+              <option value="data.purge">data.purge（高风险，需审批 + grant）</option>
+            </select>
+            <button onClick={proposeInvocation} disabled={busy || agents.length === 0}>
+              发起调用
+            </button>
+            {pendingApproval && (
+              <div>
+                <h4>待审批（绑定精确计划）</h4>
+                <ul>
+                  <li>能力：{pendingApproval.display.capability_id}</li>
+                  <li>契约版本：{pendingApproval.display.capability_contract_version}</li>
+                  <li>目标：{pendingApproval.display.target_identity}</li>
+                  <li>风险：{pendingApproval.display.risk_class}</li>
+                  <li>
+                    有效期至：
+                    {new Date(pendingApproval.display.expires_at_ms).toLocaleString()}
+                  </li>
+                  <li>计划摘要：{pendingApproval.display.side_effect_set.join("、")}</li>
+                </ul>
+                <button onClick={() => decideApproval(true)} disabled={busy}>
+                  批准执行
+                </button>{" "}
+                <button onClick={() => decideApproval(false)} disabled={busy}>
+                  拒绝
+                </button>
+              </div>
+            )}
+            <h3>执行记录</h3>
+            <ul>
+              {agentExecutions.length === 0 && <li>无执行记录。</li>}
+              {agentExecutions.map((e) => (
+                <li key={e.id}>
+                  <strong>{e.capability_id}</strong>（{e.status}，契约 {e.capability_contract_version}）
+                  {e.operation_id !== null && ` · 操作 ${e.operation_id.slice(0, 8)}…`}
+                  {(e.status === "OutcomeUnknown" || e.status === "TimedOut") && (
+                    <>
+                      {" "}
+                      <button onClick={() => reconcileExecution(e.id, true)} disabled={busy}>
+                        对账：已完成
+                      </button>{" "}
+                      <button onClick={() => reconcileExecution(e.id, false)} disabled={busy}>
+                        对账：已失败
+                      </button>
+                    </>
+                  )}
                 </li>
               ))}
             </ul>
