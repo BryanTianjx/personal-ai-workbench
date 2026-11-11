@@ -4,4 +4,6 @@
 //! Every use case takes an explicit repository port and workspace context;
 //! none of them may touch infrastructure or provider types.
 
+pub mod knowledge;
+pub mod learning;
 pub mod work_management;

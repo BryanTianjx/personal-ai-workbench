@@ -16,6 +16,7 @@ The delivered Alpha 0.1 foundation is a Windows-first, local-first Tauri 2 deskt
 ## 2. Audit Scope and Evidence Rules
 
 ### In scope
+
 - Repository identity, main-branch state and milestone integration.
 - Product/architecture baseline as described by README and ADR references.
 - E1, E2 and E3 engineering evidence reports.
@@ -23,6 +24,7 @@ The delivered Alpha 0.1 foundation is a Windows-first, local-first Tauri 2 deskt
 - Outstanding release, offline, migration, packaging and platform boundaries.
 
 ### Evidence limitations
+
 - This audit reads repository metadata and committed documents; it does not independently check out the source tree or rerun commands.
 - Test counts and pass claims below are **reported evidence**, not newly reproduced results.
 - A report's “implemented”, “automated pass”, “windowed run pass”, “deferred” and “release accepted” are distinct states and must not be conflated.
@@ -57,6 +59,7 @@ The repository describes the product principles, product scope, domain architect
 **Assessment: implemented; partially manually verified.**
 
 Reported deliverables include:
+
 - Rust workspace and four-crate boundaries.
 - Tauri desktop shell and typed command/error surface.
 - SQLite connection policy, checksum-tracked migrations and workspace isolation.
@@ -130,6 +133,7 @@ Provider-side idempotency keys and real external outcome reconciliation remain E
 Reason: E1–E3 code-complete status is supported by repository evidence, but offline acceptance and the complete release gate are not closed. Packaging/upgrade and interrupted-migration live evidence also need explicit review before calling Alpha 0.1 a release candidate.
 
 A release decision requires:
+
 - All P0 items closed.
 - P1 items either closed or explicitly accepted with owner, rationale and mitigation.
 - CI and local verification run against the exact release candidate commit.
@@ -154,6 +158,7 @@ A release decision requires:
 ## 10. Audit Maintenance
 
 Re-audit this baseline when:
+
 - Alpha 0.1 release candidate changes materially.
 - A P0/P1 risk is closed or accepted.
 - E4/Alpha 0.2 scope is approved.

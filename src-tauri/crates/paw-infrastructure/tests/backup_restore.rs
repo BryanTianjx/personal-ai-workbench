@@ -12,9 +12,15 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use paw_application::ports::attachment_repository::{
+    Attachment, AttachmentOwner, AttachmentRepository,
+};
+use paw_application::ports::file_store::{FileStoreError, ManagedFileStore};
 use paw_application::ports::workspace_repository::WorkspaceRepository;
 use paw_application::{Project, ProjectId, ProjectStatus, Workspace, WorkspaceId};
 use paw_infrastructure::backup::{self, BackupError};
+use paw_infrastructure::filesystem::FsManagedFileStore;
+use paw_infrastructure::repositories::attachment_repository::SqliteAttachmentRepository;
 use paw_infrastructure::repositories::workspace_repository::SqliteWorkspaceRepository;
 use paw_infrastructure::sqlite;
 
@@ -58,6 +64,90 @@ fn open_migrated(db: &Path) -> rusqlite::Connection {
     let mut conn = sqlite::open(db).unwrap();
     sqlite::migrate(&mut conn, &migrations_dir()).unwrap();
     conn
+}
+
+/// One attachment as it exists on a real profile: a metadata row plus its
+/// managed bytes under `<dir>/attachments/<workspace-id>/<managed-uuid>`.
+struct SeededAttachment {
+    workspace_id: WorkspaceId,
+    managed_id: String,
+    path: PathBuf,
+}
+
+/// Seed a workspace, a project, one attachment metadata row and its bytes.
+fn seed_attachment(dir: &Path, db: &Path) -> SeededAttachment {
+    drop(open_migrated(db));
+    let workspaces = SqliteWorkspaceRepository::open(db).unwrap();
+    let attachments = SqliteAttachmentRepository::open(db).unwrap();
+    let store = FsManagedFileStore::open(dir).unwrap();
+
+    let ws = Workspace {
+        id: WorkspaceId::new_v7(),
+        name: "附件空间".into(),
+    };
+    workspaces.insert_workspace(&ws).unwrap();
+    let project = Project {
+        id: ProjectId::new_v7(),
+        workspace_id: ws.id.clone(),
+        goal_id: None,
+        area_id: None,
+        description: None,
+        status: ProjectStatus::Active,
+        name: "附件项目".into(),
+    };
+    workspaces.insert_project(&ws.id, &project).unwrap();
+
+    let stored = store.store(&ws.id, "附件内容".as_bytes()).unwrap();
+    attachments
+        .insert_attachment(&Attachment {
+            id: uuid::Uuid::now_v7().to_string(),
+            workspace_id: ws.id.clone(),
+            owner: AttachmentOwner::Project,
+            owner_id: project.id.as_str().to_string(),
+            managed_id: stored.managed_id.clone(),
+            file_name: "说明.md".into(),
+            size_bytes: stored.size_bytes,
+            sha256: stored.sha256.clone(),
+            created_at: 0,
+        })
+        .unwrap();
+
+    let path = dir
+        .join("attachments")
+        .join(ws.id.as_str())
+        .join(&stored.managed_id);
+    SeededAttachment {
+        workspace_id: ws.id,
+        managed_id: stored.managed_id,
+        path,
+    }
+}
+
+/// A managed attachment file with no metadata row (a profile that has bytes
+/// but no database yet), for "target untouched" assertions.
+fn write_stray_attachment(dir: &Path) -> PathBuf {
+    let path = dir
+        .join("attachments")
+        .join(uuid::Uuid::now_v7().to_string())
+        .join(uuid::Uuid::now_v7().to_string());
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    fs::write(&path, b"attachment bytes").unwrap();
+    path
+}
+
+/// Read one `paw_backup_metadata` value straight from a snapshot file.
+fn snapshot_metadata(backup_file: &Path, key: &str) -> Option<String> {
+    let conn = rusqlite::Connection::open_with_flags(
+        backup_file,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+    )
+    .unwrap();
+    conn.query_row(
+        "SELECT value FROM paw_backup_metadata WHERE key = ?1",
+        rusqlite::params![key],
+        |r| r.get(0),
+    )
+    .ok()
 }
 
 #[test]
@@ -127,6 +217,7 @@ fn restore_rejects_corrupt_backup_file() {
     let _guard = TempDirGuard::new(dir.clone());
     let active = dir.join("app.sqlite");
     let backup_file = dir.join("corrupt.sqlite");
+    let stray_attachment = write_stray_attachment(&dir);
 
     fs::write(&backup_file, b"this is not a sqlite database at all").unwrap();
     let result = backup::restore_backup(&backup_file, &active);
@@ -139,6 +230,8 @@ fn restore_rejects_corrupt_backup_file() {
     );
     // The active location must not have been touched.
     assert!(!active.exists());
+    // A rejected restore must not purge existing attachment bytes either.
+    assert!(stray_attachment.is_file(), "rejected restore purged bytes");
 }
 
 #[test]
@@ -185,4 +278,172 @@ fn restored_database_migrates_idempotently() {
         .unwrap();
     assert_eq!(ledger, 8);
     drop(conn);
+}
+
+#[test]
+fn backup_declares_attachment_bytes_excluded() {
+    let dir = temp_dir("attachments-meta");
+    let _guard = TempDirGuard::new(dir.clone());
+    let active = dir.join("app.sqlite");
+    let backup_file = dir.join("app-backup.sqlite");
+
+    let info = {
+        let conn = open_migrated(&active);
+        let info = backup::create_backup(&conn, &backup_file).unwrap();
+        drop(conn);
+        info
+    };
+
+    // The returned metadata states the guarantee, and so does the file itself.
+    assert!(info.attachments_excluded);
+    assert_eq!(
+        snapshot_metadata(&backup_file, "attachments_excluded").as_deref(),
+        Some("true")
+    );
+    // The remaining metadata keys are unchanged by the addition.
+    assert_eq!(
+        snapshot_metadata(&backup_file, "schema_version").as_deref(),
+        Some("8")
+    );
+}
+
+#[test]
+fn restore_clears_attachment_bytes_and_keeps_metadata_rows() {
+    let dir = temp_dir("attachments-purge");
+    let _guard = TempDirGuard::new(dir.clone());
+    let active = dir.join("app.sqlite");
+    let backup_file = dir.join("app-backup.sqlite");
+
+    // Arrange: a real profile with one attachment (metadata row + bytes).
+    let seeded = seed_attachment(&dir, &active);
+    assert!(seeded.path.is_file(), "seed must put bytes on disk");
+    {
+        let conn = open_migrated(&active);
+        backup::create_backup(&conn, &backup_file).unwrap();
+        drop(conn);
+    }
+    // The snapshot carries the metadata row...
+    {
+        let snapshot = rusqlite::Connection::open_with_flags(
+            &backup_file,
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+        )
+        .unwrap();
+        let rows: i64 = snapshot
+            .query_row("SELECT COUNT(*) FROM attachments", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(rows, 1, "attachment metadata must be inside the backup");
+    }
+    // ...but not the bytes: they stay outside and are not readable from it.
+
+    // Disaster: the database file is destroyed, attachment bytes survive.
+    fs::remove_file(&active).unwrap();
+    assert!(seeded.path.is_file());
+
+    // Act.
+    let restored = backup::restore_backup(&backup_file, &active).unwrap();
+    assert!(restored.attachments_excluded);
+
+    // Assert: metadata rows came back from the snapshot...
+    let conn = sqlite::open(&active).unwrap();
+    let rows: i64 = conn
+        .query_row("SELECT COUNT(*) FROM attachments", [], |r| r.get(0))
+        .unwrap();
+    drop(conn);
+    assert_eq!(rows, 1, "restored database keeps attachment metadata");
+
+    // ...while the managed bytes were explicitly excluded and are gone:
+    // restore clears the stale attachment directory instead of leaving files
+    // that no restored metadata row can be matched against.
+    assert!(
+        !seeded.path.exists(),
+        "restore must purge attachment bytes it never backed up"
+    );
+    let store = FsManagedFileStore::open(&dir).unwrap();
+    assert!(matches!(
+        store.open(&seeded.workspace_id, &seeded.managed_id),
+        Err(FileStoreError::NotFound)
+    ));
+    let root = dir.join("attachments");
+    assert!(root.is_dir(), "the managed store root is kept");
+    assert_eq!(
+        fs::read_dir(&root).unwrap().count(),
+        0,
+        "the restored profile starts with no attachment bytes"
+    );
+}
+
+#[test]
+fn restore_rejects_snapshot_without_attachment_exclusion_declaration() {
+    let dir = temp_dir("attachments-undeclared");
+    let _guard = TempDirGuard::new(dir.clone());
+    let active = dir.join("app.sqlite");
+    let backup_file = dir.join("app-backup.sqlite");
+
+    let seeded = seed_attachment(&dir, &active);
+    {
+        let conn = open_migrated(&active);
+        backup::create_backup(&conn, &backup_file).unwrap();
+        drop(conn);
+    }
+    // A snapshot that never declared its attachment guarantee (pre-REL-006
+    // or tampered with) is not restorable.
+    {
+        let conn = rusqlite::Connection::open(&backup_file).unwrap();
+        conn.execute(
+            "DELETE FROM paw_backup_metadata WHERE key = 'attachments_excluded'",
+            [],
+        )
+        .unwrap();
+    }
+    fs::remove_file(&active).unwrap();
+
+    let result = backup::restore_backup(&backup_file, &active);
+    assert!(
+        matches!(result, Err(BackupError::MissingAttachmentsExcluded)),
+        "expected MissingAttachmentsExcluded, got {result:?}"
+    );
+    if let Err(e) = &result {
+        assert!(
+            e.to_string().contains("attachments_excluded"),
+            "the rejection must name the missing declaration: {e}"
+        );
+    }
+    assert!(!active.exists());
+    assert!(seeded.path.is_file());
+}
+
+#[test]
+fn restore_rejects_snapshot_claiming_attachment_bytes_included() {
+    let dir = temp_dir("attachments-declared-false");
+    let _guard = TempDirGuard::new(dir.clone());
+    let active = dir.join("app.sqlite");
+    let backup_file = dir.join("app-backup.sqlite");
+
+    let seeded = seed_attachment(&dir, &active);
+    {
+        let conn = open_migrated(&active);
+        backup::create_backup(&conn, &backup_file).unwrap();
+        drop(conn);
+    }
+    {
+        let conn = rusqlite::Connection::open(&backup_file).unwrap();
+        conn.execute(
+            "UPDATE paw_backup_metadata SET value = 'false' WHERE key = 'attachments_excluded'",
+            [],
+        )
+        .unwrap();
+    }
+    fs::remove_file(&active).unwrap();
+
+    let result = backup::restore_backup(&backup_file, &active);
+    assert!(
+        matches!(
+            result,
+            Err(BackupError::AttachmentsNotExcluded { ref value }) if value == "false"
+        ),
+        "expected AttachmentsNotExcluded, got {result:?}"
+    );
+    assert!(!active.exists());
+    assert!(seeded.path.is_file());
 }
