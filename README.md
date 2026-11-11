@@ -59,6 +59,9 @@ Alpha 0.1 起交付与验收目标为 Windows（Windows-only，见 ADR-021）；
 
 ## 文档入口
 
+- [Engineering Audit Baseline v1.0](docs/04-quality/engineering-audit-baseline-v1.0.md)
+- [Alpha 0.1 Release Closure — Hermes Execution Package](docs/06-delivery/alpha-0.1-release-closure/README.md)
+
 - [产品愿景](docs/00-overview/product-vision.md)
 - [产品范围](docs/00-overview/product-scope.md)
 - [术语表](docs/00-overview/terminology.md)
