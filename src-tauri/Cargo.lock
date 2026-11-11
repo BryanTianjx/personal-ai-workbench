@@ -2161,6 +2161,7 @@ version = "0.1.0"
 dependencies = [
  "paw-application",
  "paw-infrastructure",
+ "rusqlite",
  "serde",
  "serde_json",
  "tauri",
@@ -2183,6 +2184,7 @@ dependencies = [
  "paw-application",
  "paw-domain",
  "rusqlite",
+ "serde",
  "serde_json",
  "sha2",
  "thiserror 1.0.69",

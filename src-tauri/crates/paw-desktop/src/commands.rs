@@ -15,6 +15,7 @@
 use std::os::windows::process::CommandExt;
 use std::path::Path;
 
+use paw_application::ports::audit::AuditSink as _;
 use paw_application::ports::authorization::ExecutionContext;
 use paw_application::ports::workspace_repository::WorkspaceRepositoryError;
 use paw_application::use_cases::work_management::{self as use_cases, WorkManagementError};
@@ -42,6 +43,9 @@ pub struct WorkManagementApi {
     attachments:
         paw_infrastructure::repositories::attachment_repository::SqliteAttachmentRepository,
     file_store: paw_infrastructure::filesystem::FsManagedFileStore,
+    /// Coordination connection for the durable-operations services (E3):
+    /// operations, outbox and retention operate on raw rusqlite connections.
+    coordination: rusqlite::Connection,
     authorizer: LocalSingleUserAuthorizer,
     audit: SqliteAuditSink,
 }
@@ -72,6 +76,7 @@ impl WorkManagementApi {
                     source: std::io::Error::other(e.to_string()),
                 }
             })?,
+            coordination: paw_infrastructure::sqlite::open(db_path)?,
             authorizer: LocalSingleUserAuthorizer,
             audit: SqliteAuditSink::open(db_path)?,
         })
@@ -326,6 +331,344 @@ impl WorkManagementApi {
         })
     }
 
+    // -- Operation queue (E3-04) ------------------------------------------------
+
+    /// Workspace-scoped operation queue view. Read-only (reads are not
+    /// authorization-gated in this codebase's current policy).
+    pub fn list_operations(
+        &self,
+        workspace_id: &WorkspaceId,
+    ) -> Result<Vec<paw_infrastructure::operations::OperationRow>, CommandError> {
+        paw_infrastructure::operations::list_operations(
+            &self.coordination,
+            workspace_id.as_str(),
+            None,
+        )
+        .map_err(|_| CommandError::Unexpected)
+    }
+
+    /// Request cooperative cancellation (audited, gated).
+    pub fn request_operation_cancellation(
+        &self,
+        workspace_id: &WorkspaceId,
+        operation_id: &str,
+    ) -> Result<paw_infrastructure::operations::OperationRow, CommandError> {
+        let ctx = self.context();
+        let action = paw_application::ports::authorization::ProtectedAction::CancelOperation {
+            workspace_id: workspace_id.clone(),
+        };
+        check_gate(
+            &self.authorizer,
+            &self.audit,
+            &ctx,
+            &action,
+            Some(workspace_id),
+            "operation",
+            Some(operation_id),
+        )?;
+        let row =
+            paw_infrastructure::operations::request_cancellation(&self.coordination, operation_id)
+                .map_err(map_classification_error)?;
+        self.audit
+            .record(&paw_application::ports::audit::AuditEvent {
+                workspace_id: Some(workspace_id.clone()),
+                actor_id: ctx.actor_id.clone(),
+                action: action.action_key(),
+                resource_type: "operation",
+                resource_id: Some(operation_id.to_string()),
+                outcome: paw_application::ports::audit::AuditOutcome::Allowed,
+                correlation_id: ctx.correlation_id.clone(),
+            });
+        Ok(row)
+    }
+
+    /// Reconcile an OutcomeUnknown operation back into Running (audited).
+    pub fn resume_operation(
+        &self,
+        workspace_id: &WorkspaceId,
+        operation_id: &str,
+        note: &str,
+    ) -> Result<paw_infrastructure::operations::OperationRow, CommandError> {
+        let ctx = self.context();
+        let action = paw_application::ports::authorization::ProtectedAction::ResumeOperation {
+            workspace_id: workspace_id.clone(),
+        };
+        check_gate(
+            &self.authorizer,
+            &self.audit,
+            &ctx,
+            &action,
+            Some(workspace_id),
+            "operation",
+            Some(operation_id),
+        )?;
+        let row = paw_infrastructure::operations::resume_after_reconciliation(
+            &self.coordination,
+            operation_id,
+            note,
+        )
+        .map_err(map_operation_error)?;
+        self.audit
+            .record(&paw_application::ports::audit::AuditEvent {
+                workspace_id: Some(workspace_id.clone()),
+                actor_id: ctx.actor_id.clone(),
+                action: action.action_key(),
+                resource_type: "operation",
+                resource_id: Some(operation_id.to_string()),
+                outcome: paw_application::ports::audit::AuditOutcome::Allowed,
+                correlation_id: ctx.correlation_id.clone(),
+            });
+        Ok(row)
+    }
+
+    /// List quarantined messages of a workspace (plus system-scope rows are
+    /// excluded: only the unfiltered system view sees those).
+    pub fn list_quarantined(
+        &self,
+        workspace_id: &WorkspaceId,
+    ) -> Result<Vec<paw_infrastructure::outbox::QuarantinedMessage>, CommandError> {
+        paw_infrastructure::outbox::list_quarantined(
+            &self.coordination,
+            Some(workspace_id.as_str()),
+        )
+        .map_err(|_| CommandError::Unexpected)
+    }
+
+    /// Re-drive a quarantined message (gated, audited; operator recorded).
+    pub fn redrive_message(
+        &self,
+        workspace_id: &WorkspaceId,
+        message_id: &str,
+    ) -> Result<String, CommandError> {
+        let ctx = self.context();
+        let action = paw_application::ports::authorization::ProtectedAction::RedriveMessage {
+            workspace_id: workspace_id.clone(),
+        };
+        check_gate(
+            &self.authorizer,
+            &self.audit,
+            &ctx,
+            &action,
+            Some(workspace_id),
+            "message",
+            Some(message_id),
+        )?;
+        let now = paw_infrastructure::sqlite::now_ms().map_err(|_| CommandError::Unexpected)?;
+        let id = paw_infrastructure::outbox::redrive_quarantined(
+            &self.coordination,
+            message_id,
+            &ctx.actor_id,
+            now,
+        )
+        .map_err(|_| CommandError::Unexpected)?;
+        self.audit
+            .record(&paw_application::ports::audit::AuditEvent {
+                workspace_id: Some(workspace_id.clone()),
+                actor_id: ctx.actor_id.clone(),
+                action: action.action_key(),
+                resource_type: "message",
+                resource_id: Some(id.clone()),
+                outcome: paw_application::ports::audit::AuditOutcome::Allowed,
+                correlation_id: ctx.correlation_id.clone(),
+            });
+        Ok(id)
+    }
+
+    /// Export the workspace's durable-operation history to a temp JSON file
+    /// and return its path (pre-purge user-initiated step; audited). The
+    /// command itself runs under a durable operation envelope so the queue
+    /// view shows the consequential action (E3-05 windowed-run fix: the
+    /// queue was unverifiable because no Alpha 0.1 flow opened envelopes).
+    pub fn export_operations_to_temp(
+        &self,
+        workspace_id: &WorkspaceId,
+    ) -> Result<String, CommandError> {
+        let ctx = self.context();
+        let action = paw_application::ports::authorization::ProtectedAction::ExportWorkspaceData {
+            workspace_id: workspace_id.clone(),
+        };
+        check_gate(
+            &self.authorizer,
+            &self.audit,
+            &ctx,
+            &action,
+            Some(workspace_id),
+            "operation",
+            None,
+        )?;
+        // Durable envelope for the consequential command (E0.3.2 §2: a
+        // bounded unit of work with persisted progress).
+        let envelope = paw_infrastructure::operations::create_operation(
+            &self.coordination,
+            &paw_infrastructure::operations::NewOperation {
+                kind: "data.export".into(),
+                owner_domain: "system_security".into(),
+                owner_type: "workspace".into(),
+                owner_id: workspace_id.as_str().to_string(),
+                workspace_id: Some(workspace_id.as_str().to_string()),
+                actor_id: ctx.actor_id.clone(),
+                correlation_id: ctx.correlation_id.clone(),
+                causation_id: None,
+                cancellation_support:
+                    paw_infrastructure::operations::CancellationSupport::Unsupported,
+            },
+        )
+        .map_err(map_operation_error)?;
+        paw_infrastructure::operations::transition(
+            &self.coordination,
+            &envelope.id,
+            paw_infrastructure::operations::OperationStatus::Running,
+            None,
+        )
+        .map_err(map_operation_error)?;
+
+        let result = (|| {
+            let json = paw_infrastructure::retention::export_operations_json(
+                &self.coordination,
+                workspace_id.as_str(),
+            )
+            .map_err(|_| CommandError::Unexpected)?;
+            let dir = std::env::temp_dir().join("paw-exports");
+            std::fs::create_dir_all(&dir).map_err(CommandError::from_io)?;
+            let path = dir.join(format!(
+                "operations-{}-{}.json",
+                workspace_id.as_str(),
+                paw_infrastructure::sqlite::now_ms().map_err(|_| CommandError::Unexpected)?
+            ));
+            std::fs::write(&path, json).map_err(CommandError::from_io)?;
+            Ok::<String, CommandError>(path.to_string_lossy().into_owned())
+        })();
+
+        match &result {
+            Ok(_) => {
+                paw_infrastructure::operations::transition(
+                    &self.coordination,
+                    &envelope.id,
+                    paw_infrastructure::operations::OperationStatus::Succeeded,
+                    None,
+                )
+                .map_err(map_operation_error)?;
+            }
+            Err(_) => {
+                paw_infrastructure::operations::transition(
+                    &self.coordination,
+                    &envelope.id,
+                    paw_infrastructure::operations::OperationStatus::Failed,
+                    Some("export_failed"),
+                )
+                .map_err(map_operation_error)?;
+            }
+        }
+
+        let path = result?;
+        self.audit
+            .record(&paw_application::ports::audit::AuditEvent {
+                workspace_id: Some(workspace_id.clone()),
+                actor_id: ctx.actor_id.clone(),
+                action: action.action_key(),
+                resource_type: "export",
+                resource_id: Some(path.clone()),
+                outcome: paw_application::ports::audit::AuditOutcome::Allowed,
+                correlation_id: ctx.correlation_id.clone(),
+            });
+        Ok(path)
+    }
+
+    /// Purge expired operations and audit rows under the default policy
+    /// (gated, audited, explicit — no background purge exists). Runs under
+    /// a system-scope durable envelope (E3-05 windowed-run fix, same as
+    /// export).
+    pub fn purge_expired(&self) -> Result<(usize, usize, usize), CommandError> {
+        let ctx = self.context();
+        let action = paw_application::ports::authorization::ProtectedAction::PurgeExpiredData;
+        check_gate(
+            &self.authorizer,
+            &self.audit,
+            &ctx,
+            &action,
+            None,
+            "data",
+            None,
+        )?;
+        // Durable system-scope envelope for the consequential purge.
+        let envelope = paw_infrastructure::operations::create_operation(
+            &self.coordination,
+            &paw_infrastructure::operations::NewOperation {
+                kind: "data.purge".into(),
+                owner_domain: "system_security".into(),
+                owner_type: "system".into(),
+                owner_id: "retention".into(),
+                workspace_id: None,
+                actor_id: ctx.actor_id.clone(),
+                correlation_id: ctx.correlation_id.clone(),
+                causation_id: None,
+                cancellation_support:
+                    paw_infrastructure::operations::CancellationSupport::Unsupported,
+            },
+        )
+        .map_err(map_operation_error)?;
+        paw_infrastructure::operations::transition(
+            &self.coordination,
+            &envelope.id,
+            paw_infrastructure::operations::OperationStatus::Running,
+            None,
+        )
+        .map_err(map_operation_error)?;
+
+        let result = (|| {
+            let now = paw_infrastructure::sqlite::now_ms().map_err(|_| CommandError::Unexpected)?;
+            let operations = paw_infrastructure::retention::purge_expired_operations(
+                &self.coordination,
+                now,
+                &Default::default(),
+            )
+            .map_err(|_| CommandError::Unexpected)?;
+            let audit_rows = paw_infrastructure::retention::purge_expired_audit_events(
+                &self.coordination,
+                now,
+                &Default::default(),
+            )
+            .map_err(|_| CommandError::Unexpected)?;
+            Ok::<_, CommandError>((operations.0, operations.1, audit_rows))
+        })();
+
+        match &result {
+            Ok(_) => {
+                paw_infrastructure::operations::transition(
+                    &self.coordination,
+                    &envelope.id,
+                    paw_infrastructure::operations::OperationStatus::Succeeded,
+                    None,
+                )
+                .map_err(map_operation_error)?;
+            }
+            Err(_) => {
+                paw_infrastructure::operations::transition(
+                    &self.coordination,
+                    &envelope.id,
+                    paw_infrastructure::operations::OperationStatus::Failed,
+                    Some("purge_failed"),
+                )
+                .map_err(map_operation_error)?;
+            }
+        }
+
+        let (operations, attempts, audit_rows) = result?;
+        self.audit
+            .record(&paw_application::ports::audit::AuditEvent {
+                workspace_id: None,
+                actor_id: ctx.actor_id.clone(),
+                action: action.action_key(),
+                resource_type: "data",
+                resource_id: Some(format!(
+                    "operations={operations},attempts={attempts},audit={audit_rows}"
+                )),
+                outcome: paw_application::ports::audit::AuditOutcome::Allowed,
+                correlation_id: ctx.correlation_id.clone(),
+            });
+        Ok((operations, attempts, audit_rows))
+    }
+
     // -- Attachments (E2-04) --------------------------------------------------
 
     pub fn add_attachment(
@@ -573,6 +916,8 @@ pub enum CommandError {
     AttachmentNotFound,
     /// The attachment's owner record does not exist (E2-04).
     OwnerNotFound,
+    /// The referenced operation does not exist (E3-04).
+    OperationNotFound,
     /// Fresh authorization refused the protected side effect (E1-09).
     Denied,
     /// Any other failure; details stay on the Rust side.
@@ -622,6 +967,70 @@ impl From<WorkManagementError> for CommandError {
 impl From<paw_application::ParseError> for CommandError {
     fn from(_: paw_application::ParseError) -> Self {
         Self::InvalidWorkspaceId
+    }
+}
+
+/// Map an infrastructure OperationError to the safe boundary code.
+fn map_operation_error(e: paw_infrastructure::operations::OperationError) -> CommandError {
+    match e {
+        paw_infrastructure::operations::OperationError::NotFound(_) => {
+            CommandError::OperationNotFound
+        }
+        paw_infrastructure::operations::OperationError::InvalidTransition { .. } => {
+            CommandError::TaskStatusInvalid
+        }
+        _ => CommandError::Unexpected,
+    }
+}
+
+fn map_classification_error(
+    e: paw_infrastructure::operations::ClassificationError,
+) -> CommandError {
+    match e {
+        paw_infrastructure::operations::ClassificationError::NotFound(_) => {
+            CommandError::OperationNotFound
+        }
+        paw_infrastructure::operations::ClassificationError::InvalidTransition { .. } => {
+            CommandError::TaskStatusInvalid
+        }
+        _ => CommandError::Unexpected,
+    }
+}
+
+/// Desktop-side gate: authorize `action`; on denial record the audited
+/// refusal and surface `denied`. Used by the E3 flows that operate directly
+/// on the coordination services instead of through application use cases.
+#[allow(clippy::too_many_arguments)]
+fn check_gate(
+    authorizer: &LocalSingleUserAuthorizer,
+    audit: &SqliteAuditSink,
+    ctx: &ExecutionContext,
+    action: &paw_application::ports::authorization::ProtectedAction,
+    workspace_id: Option<&WorkspaceId>,
+    resource_type: &'static str,
+    resource_id: Option<&str>,
+) -> Result<(), CommandError> {
+    use paw_application::ports::authorization::Authorizer;
+    if authorizer.authorize(ctx, action).is_err() {
+        audit.record(&paw_application::ports::audit::AuditEvent {
+            workspace_id: workspace_id.cloned(),
+            actor_id: ctx.actor_id.clone(),
+            action: action.action_key(),
+            resource_type,
+            resource_id: resource_id.map(str::to_string),
+            outcome: paw_application::ports::audit::AuditOutcome::Denied,
+            correlation_id: ctx.correlation_id.clone(),
+        });
+        return Err(CommandError::Denied);
+    }
+    Ok(())
+}
+
+impl CommandError {
+    /// Storage-level IO failures surface as the opaque `unexpected` code.
+    fn from_io(e: std::io::Error) -> Self {
+        let _ = e;
+        Self::Unexpected
     }
 }
 
@@ -1017,6 +1426,88 @@ pub fn remove_attachment(
         .lock()
         .expect("WorkManagementApi mutex must not be poisoned");
     Ok(api.remove_attachment(&workspace_id, &attachment_id)?)
+}
+
+// -- Operation queue (E3-04) ------------------------------------------------
+
+#[tauri::command]
+pub fn list_operations(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+) -> Result<Vec<paw_infrastructure::operations::OperationRow>, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.list_operations(&workspace_id)
+}
+
+#[tauri::command]
+pub fn request_operation_cancellation(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    operation_id: String,
+) -> Result<paw_infrastructure::operations::OperationRow, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.request_operation_cancellation(&workspace_id, &operation_id)
+}
+
+#[tauri::command]
+pub fn resume_operation(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    operation_id: String,
+    note: String,
+) -> Result<paw_infrastructure::operations::OperationRow, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.resume_operation(&workspace_id, &operation_id, &note)
+}
+
+#[tauri::command]
+pub fn list_quarantined_messages(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+) -> Result<Vec<paw_infrastructure::outbox::QuarantinedMessage>, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.list_quarantined(&workspace_id)
+}
+
+#[tauri::command]
+pub fn redrive_message(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    message_id: String,
+) -> Result<String, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.redrive_message(&workspace_id, &message_id)
+}
+
+#[tauri::command]
+pub fn export_operations(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+) -> Result<String, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.export_operations_to_temp(&workspace_id)
+}
+
+#[tauri::command]
+pub fn purge_expired_data(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+) -> Result<(usize, usize, usize), CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.purge_expired()
 }
 
 #[cfg(test)]

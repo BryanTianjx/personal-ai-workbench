@@ -49,6 +49,30 @@ type Dashboard = {
   tasks_by_status: [string, number][];
   attachment_count: number;
 };
+type OperationRow = {
+  id: string;
+  kind: string;
+  workspace_id: string | null;
+  status:
+    | "pending"
+    | "running"
+    | "awaiting_approval"
+    | "retry_scheduled"
+    | "outcome_unknown"
+    | "succeeded"
+    | "failed"
+    | "cancelled";
+  next_attempt_at: number | null;
+  cancellation_requested_at: number | null;
+};
+type QuarantinedMessage = {
+  id: string;
+  event_type: string;
+  attempts: number;
+  redrive_count: number;
+  last_error_category: string | null;
+  last_redrive_by: string | null;
+};
 
 type CommandError =
   | "empty_name"
@@ -121,6 +145,8 @@ export default function App() {
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<SearchHit[] | null>(null);
   const [taskAttachments, setTaskAttachments] = useState<Record<string, Attachment[]>>({});
+  const [operations, setOperations] = useState<OperationRow[]>([]);
+  const [quarantined, setQuarantined] = useState<QuarantinedMessage[]>([]);
 
   const fail = (e: unknown) => setNotice(describe(e));
 
@@ -179,6 +205,13 @@ export default function App() {
         ),
       )
       .then((pairs) => setTaskAttachments(Object.fromEntries(pairs)))
+      .catch(fail);
+    // Operation queue view (E3-04): workspace-scoped operations + poison queue.
+    invoke<OperationRow[]>("list_operations", { workspaceId })
+      .then((r) => setOperations(r))
+      .catch(fail);
+    invoke<QuarantinedMessage[]>("list_quarantined_messages", { workspaceId })
+      .then((r) => setQuarantined(r))
       .catch(fail);
   }, [workspaceId]);
 
@@ -342,6 +375,53 @@ export default function App() {
         limit: 20,
       });
       setHits(result);
+    });
+
+  // ---- Operation queue actions (E3-04) ----
+  const cancelOperation = (op: OperationRow) =>
+    run(async () => {
+      await invoke<OperationRow>("request_operation_cancellation", {
+        workspaceId,
+        operationId: op.id,
+      });
+      setNotice(`已记录取消请求：${op.kind}（取消是否生效取决于能力声明与状态机）`);
+      reloadAll();
+    });
+
+  const resumeOperation = (op: OperationRow) =>
+    run(async () => {
+      await invoke<OperationRow>("resume_operation", {
+        workspaceId,
+        operationId: op.id,
+        note: "用户确认：结果已核对，可安全重试",
+      });
+      setNotice(`已恢复运行：${op.kind}`);
+      reloadAll();
+    });
+
+  const redriveMessage = (m: QuarantinedMessage) =>
+    run(async () => {
+      const id = await invoke<string>("redrive_message", {
+        workspaceId,
+        messageId: m.id,
+      });
+      setNotice(`已重驱隔离事件 ${id}（保留事件 ID，操作者已记录）`);
+      reloadAll();
+    });
+
+  const exportOperations = () =>
+    run(async () => {
+      const path = await invoke<string>("export_operations", { workspaceId });
+      setNotice(`操作历史已导出：${path}`);
+    });
+
+  const purgeExpired = () =>
+    run(async () => {
+      const [operations, attempts, audit] = await invoke<[number, number, number]>(
+        "purge_expired_data",
+      );
+      setNotice(`已清除过期数据：操作 ${operations}（含尝试 ${attempts}）、审计 ${audit}`);
+      reloadAll();
     });
 
   // ---- Render ----
@@ -639,6 +719,55 @@ export default function App() {
                       ))}
                     </ul>
                   </div>
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          {/* Operation queue (E3-04) */}
+          <section>
+            <h2>操作队列</h2>
+            <p>
+              持久操作与隔离事件（当前工作空间）。导出先于清除；清除为显式动作，无后台自动清除。
+            </p>
+            <button onClick={exportOperations} disabled={busy}>
+              导出操作历史（JSON）
+            </button>{" "}
+            <button onClick={purgeExpired} disabled={busy}>
+              清除过期数据（默认策略）
+            </button>
+            <ul>
+              {operations.length === 0 && <li>无操作记录。</li>}
+              {operations.map((op) => (
+                <li key={op.id}>
+                  <strong>{op.kind}</strong>（{op.status}）
+                  {op.next_attempt_at !== null &&
+                    ` · 下次尝试 ${new Date(op.next_attempt_at).toLocaleString()}`}
+                  {op.cancellation_requested_at !== null && " · 已请求取消"}
+                  {op.status === "running" && (
+                    <button onClick={() => cancelOperation(op)} disabled={busy}>
+                      请求取消
+                    </button>
+                  )}
+                  {op.status === "outcome_unknown" && (
+                    <button onClick={() => resumeOperation(op)} disabled={busy}>
+                      核对后恢复
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+            <h3>隔离事件</h3>
+            <ul>
+              {quarantined.length === 0 && <li>无隔离事件。</li>}
+              {quarantined.map((m) => (
+                <li key={m.id}>
+                  {m.event_type}（尝试 {m.attempts} 次，重驱 {m.redrive_count} 次
+                  {m.last_error_category && `，原因：${m.last_error_category}`}
+                  {m.last_redrive_by && `，上次操作者：${m.last_redrive_by}`}）{" "}
+                  <button onClick={() => redriveMessage(m)} disabled={busy}>
+                    重驱
+                  </button>
                 </li>
               ))}
             </ul>

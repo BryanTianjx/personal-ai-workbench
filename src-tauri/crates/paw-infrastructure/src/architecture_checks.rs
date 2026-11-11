@@ -134,7 +134,7 @@ fn forbidden_crate_edges_are_rejected() {
 /// Tauri is forbidden in every other crate (see
 /// `only_paw_desktop_may_depend_on_tauri`).
 #[cfg(test)]
-const DESKTOP_ALLOWED_EXTERNAL_CRATES: &[&str] = &["tauri", "serde", "uuid"];
+const DESKTOP_ALLOWED_EXTERNAL_CRATES: &[&str] = &["tauri", "serde", "uuid", "rusqlite"];
 
 #[test]
 fn only_paw_desktop_may_depend_on_tauri() {

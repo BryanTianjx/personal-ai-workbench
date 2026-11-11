@@ -136,3 +136,49 @@ fn full_work_management_flow_persists_across_restart() {
 
     fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn operation_queue_commands_work_through_the_api() {
+    let dir = temp_db_dir("e3-queue");
+    let db = dir.join("app.sqlite");
+
+    open_migrated(&db);
+    let api = WorkManagementApi::open(&db).unwrap();
+    let ws = api.create_workspace("队列空间").unwrap();
+
+    // Seed one workspace-scoped operation directly (E1 helpers) and see it
+    // in the queue view.
+    let new_op = paw_infrastructure::operations::NewOperation {
+        kind: "export.data".into(),
+        owner_domain: "work_management".into(),
+        owner_type: "workspace".into(),
+        owner_id: ws.id.as_str().to_string(),
+        workspace_id: Some(ws.id.as_str().to_string()),
+        actor_id: "local-user".into(),
+        correlation_id: "corr-e3".into(),
+        causation_id: None,
+        cancellation_support: paw_infrastructure::operations::CancellationSupport::Supported,
+    };
+    let op = {
+        let conn = rusqlite::Connection::open(&db).unwrap();
+        paw_infrastructure::operations::create_operation(&conn, &new_op).unwrap()
+    };
+    let listed = api.list_operations(&ws.id).unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].id, op.id);
+
+    // Cancellation request through the gated command layer.
+    let requested = api.request_operation_cancellation(&ws.id, &op.id).unwrap();
+    assert!(requested.cancellation_requested_at.is_some());
+
+    // Export writes a temp JSON artifact and returns its path.
+    let path = api.export_operations_to_temp(&ws.id).unwrap();
+    let content = std::fs::read_to_string(&path).unwrap();
+    assert!(content.contains("export.data"));
+
+    // The consequential command ran under a durable envelope: the queue now
+    // shows a succeeded data.export operation (E3-05 windowed-run fix).
+    let queue = api.list_operations(&ws.id).unwrap();
+    assert!(queue.iter().any(|o| o.kind == "data.export"
+        && o.status == paw_infrastructure::operations::OperationStatus::Succeeded));
+}

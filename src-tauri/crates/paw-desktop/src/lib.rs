@@ -105,6 +105,13 @@ pub fn run() {
             commands::read_attachment_bytes,
             commands::open_attachment_externally,
             commands::remove_attachment,
+            commands::list_operations,
+            commands::request_operation_cancellation,
+            commands::resume_operation,
+            commands::list_quarantined_messages,
+            commands::redrive_message,
+            commands::export_operations,
+            commands::purge_expired_data,
         ])
         .setup(|app| {
             let api = bootstrap_state(app)?;

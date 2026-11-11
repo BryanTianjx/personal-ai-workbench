@@ -349,10 +349,12 @@ impl SqliteWorkspaceRepository {
         // Port contract: delete the workspace and all its records, in child
         // dependency order (tasks → projects → goals → areas → workspace).
         // Everything commits atomically; a failure rolls the whole deletion
-        // back. Audit rows (migration 0003) hold a RESTRICT FK and are not
-        // deleted: a workspace with audit history is refused until the E3
-        // audit retention policy lands. Attachment metadata likewise
-        // refuses: stored bytes must be removed explicitly first (E2-04).
+        // back. Audit rows (migration 0007) hold an ON DELETE SET NULL FK:
+        // deleting the workspace detaches them into system scope as
+        // workspace-less evidence — deletion is no longer blocked by audit
+        // history, and the rows fall under the E3 audit retention policy.
+        // Attachment metadata still refuses: stored bytes must be removed
+        // explicitly first (E2-04).
         let attachments: i64 = self.conn.query_row(
             "SELECT COUNT(*) FROM attachments WHERE workspace_id = ?1",
             params![workspace_id.as_str()],

@@ -167,7 +167,7 @@ fn is_legacy_checksum(stored: &str, sql: &str) -> bool {
 /// Deterministic UTC epoch-milliseconds timestamp (used for migration
 /// `applied_at` and row timestamps). Marked `pub(crate)` so the SQLite
 /// repository adapter (workspaces/projects) can stamp rows.
-pub(crate) fn now_ms() -> Result<i64, Error> {
+pub fn now_ms() -> Result<i64, Error> {
     let d = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|e| Error::NowMsFailed { source: e })?;
