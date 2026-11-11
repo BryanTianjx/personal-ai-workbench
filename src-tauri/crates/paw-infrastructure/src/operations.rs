@@ -1,86 +1,13 @@
-//! Durable Operation lifecycle service (E1-07, Tier 1).
-//!
-//! Logical contract: `E0.3.2-engineering-specification.md` §2/§3; schema:
-//! migration `0002_durable_operations_outbox.sql`. Operation is a durable
-//! execution envelope referencing its owner record — it never mirrors Task,
-//! Workflow Run or Agent Execution state. Tier 1 exercises Pending → Running
-//! → Succeeded/Failed, restart recovery and the state-level OutcomeUnknown
-//! rule; retry scheduling/backoff, cancellation and quarantine UX are Tier 2
-//! (E1 delivery plan §3).
+//! Machine interaction (ADR-019): the stored `OperationRow` is the persistent
+//! envelope; the transition rules are the *pure* domain machine owned by
+//! `paw_domain::operation_machine`. Delegating to the domain machine keeps the
+//! storage layer free of state-machine policy and guarantees the SQLite CHECK
+//! values (state strings) always agree with the published transition rules.
 
+pub use paw_domain::operation_machine::{OperationStatus, allowed_transitions, is_terminal};
 use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::sqlite;
-
-/// Operation lifecycle states (`E0.3.2` §2). The strings match the CHECK
-/// constraint in migration 0002 exactly.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum OperationStatus {
-    Pending,
-    Running,
-    AwaitingApproval,
-    RetryScheduled,
-    OutcomeUnknown,
-    Succeeded,
-    Failed,
-    Cancelled,
-}
-
-impl OperationStatus {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Pending => "Pending",
-            Self::Running => "Running",
-            Self::AwaitingApproval => "AwaitingApproval",
-            Self::RetryScheduled => "RetryScheduled",
-            Self::OutcomeUnknown => "OutcomeUnknown",
-            Self::Succeeded => "Succeeded",
-            Self::Failed => "Failed",
-            Self::Cancelled => "Cancelled",
-        }
-    }
-
-    fn parse(value: &str) -> Option<Self> {
-        Some(match value {
-            "Pending" => Self::Pending,
-            "Running" => Self::Running,
-            "AwaitingApproval" => Self::AwaitingApproval,
-            "RetryScheduled" => Self::RetryScheduled,
-            "OutcomeUnknown" => Self::OutcomeUnknown,
-            "Succeeded" => Self::Succeeded,
-            "Failed" => Self::Failed,
-            "Cancelled" => Self::Cancelled,
-            _ => return None,
-        })
-    }
-
-    fn is_terminal(self) -> bool {
-        matches!(self, Self::Succeeded | Self::Failed | Self::Cancelled)
-    }
-}
-
-impl std::fmt::Display for OperationStatus {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
-/// Allowed transitions (`E0.3.2` §2). `OutcomeUnknown → Running` is
-/// intentionally absent: resuming an indeterminate operation requires
-/// explicit reconciliation via [`resume_after_reconciliation`], which keeps
-/// the state-level rule that an unresolved outcome blocks retry.
-fn allowed_transitions(from: OperationStatus) -> &'static [OperationStatus] {
-    use OperationStatus::*;
-    match from {
-        Pending => &[Running, AwaitingApproval, Cancelled, Failed],
-        AwaitingApproval => &[Pending, Running, Cancelled, Failed],
-        Running => &[RetryScheduled, OutcomeUnknown, Succeeded, Failed, Cancelled],
-        RetryScheduled => &[Running, Cancelled, Failed],
-        OutcomeUnknown => &[Succeeded, Failed, Cancelled],
-        Succeeded | Failed | Cancelled => &[],
-    }
-}
 
 /// A persisted Operation row (subset of columns the service reads back).
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
@@ -243,7 +170,7 @@ pub fn transition(
     } else {
         None
     };
-    let finished_at = if to.is_terminal() { Some(now) } else { None };
+    let finished_at = if is_terminal(to) { Some(now) } else { None };
     conn.execute(
         "UPDATE operations SET status = ?1, updated_at = ?2, \
          started_at = COALESCE(started_at, ?3), finished_at = COALESCE(?4, finished_at), \
@@ -506,7 +433,7 @@ pub fn request_cancellation(
             to: "cancellation_requested".into(),
         });
     }
-    if current.status.is_terminal() {
+    if is_terminal(current.status) {
         return Err(ClassificationError::InvalidTransition {
             from: current.status.as_str().into(),
             to: "cancellation_requested".into(),
