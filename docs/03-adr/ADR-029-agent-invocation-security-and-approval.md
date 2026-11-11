@@ -1,10 +1,10 @@
 # ADR-029: Agent Invocation Security and Human Approval Binding
 
-- **Status:** Proposed (R1)
-- **Decision status:** Proposed / Not Accepted
+- **Status:** Accepted (R1)
+- **Decision status:** Accepted (repository owner decision, 2026-11-12; R1 clarifications are normative; implementation and verification remain separate gates)
 - **Implementation status:** Not Implemented
 - **Verification status:** Not Verified
-- **Date:** 2026-11-11
+- **Date:** 2026-11-11 (accepted 2026-11-12)
 - **Scope:** Agent-to-capability invocation, authorization, approval, side-effect execution and uncertain outcomes
 - **Related:** ADR-004, ADR-017, ADR-019, ADR-020, ADR-022, ADR-023, ADR-024, ADR-025, ADR-026, ADR-028; `agent-authorization-model.md`
 

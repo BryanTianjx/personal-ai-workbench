@@ -26,7 +26,7 @@
 | PAW-INF-008 | RoleProfile as experience template only: no grants/secrets/approval, safe fallback, no authorization effect | Cross-cutting (presentation) | ADR-024-role-profile-model.md | ADR-024 | E7 |
 | PAW-INF-009 | WorkspaceComposition scoped to one Data Workspace, references/configuration only, backend authorization at use time, safe fallback | Cross-cutting (presentation) | ADR-025-workspace-composition.md | ADR-025 | E7 |
 
-PAW-INF-005～009 trace the ADR-023～029 R1 direction (owner-directed planning adjustment, 2026-11-12). The governing ADRs remain **Proposed / Not Implemented / Not Verified**; these rows record the design mapping only and do not constitute acceptance. The Target column follows the roadmap owner's stage assignment (E5 absorbs ADR-026/029; E7 = platform composition, V1.0 前置).
+PAW-INF-005～009 trace the ADR-023～029 R1 direction (owner-directed planning adjustment, 2026-11-12). The governing ADRs were **Accepted on 2026-11-12** by the repository owner (R1 conditions normative; implementation and verification remain Not Implemented / Not Verified). The Target column follows the roadmap owner's stage assignment (E5 absorbs ADR-026/029; E7 = platform composition, V1.0 前置). The E5 implementation specification is finalized; E7 specification work is not yet authorized.
 
 ## Verification rules
 

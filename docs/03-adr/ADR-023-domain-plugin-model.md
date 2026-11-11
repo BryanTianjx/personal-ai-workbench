@@ -1,10 +1,10 @@
 # ADR-023: Domain Plugin Model and Static Registration First
 
-- **Status:** Proposed (R1)
-- **Decision status:** Proposed / Not Accepted
+- **Status:** Accepted (R1)
+- **Decision status:** Accepted (repository owner decision, 2026-11-12; R1 clarifications are normative; implementation and verification remain separate gates)
 - **Implementation status:** Not Implemented
 - **Verification status:** Not Verified
-- **Date:** 2026-11-11
+- **Date:** 2026-11-11 (accepted 2026-11-12)
 - **Scope:** Domain extension model, registration, lifecycle
 - **Related:** ADR-002, ADR-003, ADR-006, ADR-017, ADR-018, ADR-020
 

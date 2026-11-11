@@ -1,10 +1,10 @@
 # ADR-025: Workspace Composition Is Separate from the Data Workspace Boundary
 
-- **Status:** Proposed (R1)
-- **Decision status:** Proposed / Not Accepted
+- **Status:** Accepted (R1)
+- **Decision status:** Accepted (repository owner decision, 2026-11-12; R1 clarifications are normative; implementation and verification remain separate gates)
 - **Implementation status:** Not Implemented
 - **Verification status:** Not Verified
-- **Date:** 2026-11-11
+- **Date:** 2026-11-11 (accepted 2026-11-12)
 - **Scope:** Role-based workspace composition and persistence
 - **Related:** ADR-006, ADR-013, ADR-017, ADR-020, ADR-024
 

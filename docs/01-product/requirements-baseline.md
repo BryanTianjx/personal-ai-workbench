@@ -1,7 +1,7 @@
 # 需求基线与追踪规则
 
 **状态：** Accepted planning baseline；实现状态另行追踪
-**版本：** 0.4.0（0.3.0 基础上按 ADR-023～029 R1 方向新增 §4 PAW-INF-005～009；调整由 owner 于 2026-11-12 指示，对应 ADR 仍为 Proposed，批准前不排实现）
+**版本：** 0.4.1（0.4.0 基础上记录 ADR-023～029 全部 Accepted（owner 2026-11-12）；PAW-INF-005～009 转 approved）
 
 ## 1. 优先级定义
 
@@ -50,7 +50,7 @@
 | PAW-INF-008 | RoleProfile 仅为体验模板：不携带 grant/凭据/审批；切换不改授权；导入校验剥离安全字段；失效/损坏模板安全回退 | ADR-024 | E7 | ADR-024 Validation required |
 | PAW-INF-009 | WorkspaceComposition 仅存引用与展示配置、限定单一 Data Workspace、使用时由后端授权解析、损坏/未知 schema 安全回退且不改业务数据 | ADR-025 | E7 | ADR-025 Validation required |
 
-PAW-INF-005～009 于 2026-11-12 按 [ADR-023～029 R1 方向](../04-quality/ADR-023-029-R1-cross-adr-review.md)引入：目标版本按本路线图 owner 决策归属（005/006→E5，007～009→E7）。对应 ADR 当前均为 Proposed / Not Accepted / Not Implemented / Not Verified；**各 ADR 批准为 Accepted 前，对应需求状态保持 proposed，不进入实现规格排期**。
+PAW-INF-005～009 于 2026-11-12 按 [ADR-023～029 R1 方向](../04-quality/ADR-023-029-R1-cross-adr-review.md)引入：目标版本按本路线图 owner 决策归属（005/006→E5，007～009→E7）。对应 ADR 已于 2026-11-12 全部批准为 Accepted（R1 条件为规范性约束），**PAW-INF-005～009 状态转为 approved（设计批准）**；实现与验证状态仍为未实现/未验证。005/006 的实现规格已定稿（[E5-implementation-specification](../05-architecture-evolution/E5-implementation-specification.md)），实现开工待 owner 单独授权；007～009（E7）的实现规格未授权。
 
 ## 5. P2 需求
 

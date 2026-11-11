@@ -1,6 +1,6 @@
 # 功能矩阵
 
-**状态：** Accepted planning baseline · **版本：** 0.3.0（0.2.0 基础上按 ADR-023～029 R1 方向新增"平台组合"行并细化 AI Collaboration Alpha 0.2 单元；对应 ADR 仍为 Proposed）
+**状态：** Accepted planning baseline · **版本：** 0.3.1（0.3.0 基础上记录 ADR-023～029 全部 Accepted（owner 2026-11-12）；实现/验证仍 Not Implemented / Not Verified）
 
 | 功能域 | Alpha 0.1 | Alpha 0.2 | Beta 0.5 | V1.0+ |
 |---|---|---|---|---|
@@ -23,4 +23,4 @@
 4. 微信公众号自动发布取决于官方接口权限和真实账号验证。
 5. 完全离线能力属于 Alpha 0.1 发布阻断要求。
 6. 所有版本均需保留数据可导出、备份和迁移能力。
-7. "平台组合"行对应 [ADR-023～029](../03-adr/README.md)（当前全部 Proposed / Not Implemented / Not Verified）：对应 ADR 逐份批准前，相关单元格仅为方向规划，不进入实现排期；插件化不改变 Learning/Creator/Automation 的既定交付范围（ADR-027）。
+7. "平台组合"行对应 [ADR-023～029](../03-adr/README.md)（已于 2026-11-12 全部批准为 Accepted，实现与验证状态仍为 Not Implemented / Not Verified）：各单元格为已批准设计基线下的版本规划；实现规格与实现开工按阶段独立授权（E5 规格已定稿，E7 规格未授权）；插件化不改变 Learning/Creator/Automation 的既定交付范围（ADR-027）。

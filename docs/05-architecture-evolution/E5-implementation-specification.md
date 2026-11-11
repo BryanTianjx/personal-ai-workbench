@@ -1,8 +1,8 @@
-# E5 — Implementation Specification Draft: Governed Agent Adapter, Capability Invocation and Approval Binding
+# E5 — Implementation Specification: Governed Agent Adapter, Capability Invocation and Approval Binding
 
-- **Status:** Draft R0 (2026-11-12) — **实现规格草案**
-- **Decision status:** 待 [ADR-026](../03-adr/ADR-026-capability-registry-and-ai-invocation.md) / [ADR-029](../03-adr/ADR-029-agent-invocation-security-and-approval.md) 批准为 Accepted 后方可定稿并开工实现；两 ADR 当前均为 Proposed / Not Accepted
-- **Implementation status:** Not Implemented（本草案不授权任何代码、schema 或配置变更）
+- **Status:** Finalized R1 (2026-11-12，由 Draft R0 定稿；owner 授权记录见 [跨 ADR 评审报告 §9](../04-quality/ADR-023-029-R1-cross-adr-review.md))
+- **Decision status:** 治理 ADR [ADR-026](../03-adr/ADR-026-capability-registry-and-ai-invocation.md) / [ADR-029](../03-adr/ADR-029-agent-invocation-security-and-approval.md) 已于 2026-11-12 批准为 Accepted（R1 条件为规范性约束）；本规格为其实现规格
+- **Implementation status:** Not Implemented（实现开工是独立 owner gate，本规格本身不授权任何代码、schema 或配置变更）
 - **Verification status:** Not Verified
 - **Baseline:** roadmap v0.5.0（E5 设计基线 = ADR-026/029）；`agent-authorization-model.md`；`agent-adapter-architecture.md`；ADR-004/017/018/019/020/022；`E0.3.2-engineering-specification.md` §2/§3；requirements baseline §4 PAW-INF-005/006、PAW-S-004
 
@@ -133,7 +133,7 @@ Agent proposal(不可信)
 
 ## 12. Open questions carried to implementation
 
-跨 ADR 审查 §6 明确留给实现规格的项，本草案的取舍如下，定稿时复核：
+跨 ADR 审查 §6 明确留给实现规格的项，本规格的取舍如下（定稿复核于 2026-11-12，维持原取舍）：
 
 1. **审批并发与撤销传播时点**（审查 §6.6）：E5 取"消费时校验 + 状态惰性过期"，撤销即时生效于下次 recheck；不做分布式撤销广播。
 2. **风险目录枚举**：初版 RiskClass 仅三档，规则表随描述符静态声明；细化分级延后。
@@ -144,8 +144,8 @@ Agent proposal(不可信)
 
 | 门禁 | 内容 |
 |---|---|
-| 规格定稿前置 | ADR-026 / ADR-029 逐份批准为 Accepted（H0 owner 决策，[owner-review-checklist](../architecture/adr-023-029-hermes-task-package/owner-review-checklist.md)）；本草案按批准修订 |
-| 实现开工前置 | 规格定稿 + PAW-INF-005/006 状态 proposed → approved + owner 实现授权（独立于 ADR 批准的 gate） |
+| 规格定稿前置 | ✅ 已满足：ADR-026 / ADR-029 于 2026-11-12 批准为 Accepted（[决策记录](../architecture/adr-023-029-hermes-task-package/owner-review-checklist.md)），本规格同日定稿 |
+| 实现开工前置 | PAW-INF-005/006 已转 approved；**待 owner 实现开工授权**（独立于 ADR 批准的 gate） |
 | 外部 Agent 启用前置 | ADR-022 批准 + 真实 provider 版本化兼容测试与操作手册（Gate Alpha 0.2 项） |
 | E5 退出证据 | fake-provider conformance、approval binding、unknown-outcome reconciliation（E0.3 §4），证据报告入 docs/04-quality |
 

@@ -134,3 +134,14 @@ R1 明确保留 Learning & Growth 的实体所有权、证据和 Assessment 语�
 **结论：R1 文档包可进入人工决策审查，不可直接进入代码实施。** 建议按 023→024→025→026→027→028→029 的顺序逐份批准；ADR-028/029 的审批应以 023/026 的边界先获得认可为前提。若人工审批修改任何核心不变量，应先修订本组 ADR 和本报告，再创建实施任务。
 
 人工审批必须明确：每份 ADR 的 Accepted/Rejected/Revise 状态、决策人、决策日期、附加条件，以及是否授权进入下一阶段实现规格。未明确批准的 ADR 继续保持 Proposed。
+
+## 9. 决策记录（2026-11-12 追加）
+
+仓库 owner 于 2026-11-12 作出 H0 决策：**ADR-023/024/025/027/028 与 ADR-026/029 全部批准为 Accepted**，条件为本报告 §3/§7 的边界与不变量为规范性约束（逐份决策记录见 [owner-review-checklist](../architecture/adr-023-029-hermes-task-package/owner-review-checklist.md)）。
+
+随之生效的门禁状态：
+
+1. **E5 实现规格**：获授权将 [E5 实现规格草案 R0](../05-architecture-evolution/E5-implementation-specification-draft.md) 定稿为正式实现规格（ADR-026/029 为其治理基线）；PAW-INF-005/006 转 approved。
+2. **E7 实现规格**：未授权；E7（阶段归属见 roadmap v0.5.0）的实现规格与实现开工另行开闸。
+3. **实现开工**：未授权；E5 实现开工是独立 owner gate。
+4. 各 ADR 的 Implementation / Verification 状态保持 Not Implemented / Not Verified；Accepted 不改变实现与验证事实。

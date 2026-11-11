@@ -1,6 +1,6 @@
 # 产品路线图
 
-**状态：** Accepted planning baseline · **版本：** 0.5.0 (0.4.0 基础上按 ADR-023～029 R1 方向调整 E5 设计基线并新增 E7 阶段；调整由 owner 于 2026-11-12 指示，**不构成任何 ADR 的批准**，ADR-023～029 仍为 Proposed)
+**状态：** Accepted planning baseline · **版本：** 0.5.1 (0.5.0 基础上记录 ADR-023～029 全部 Accepted（owner 2026-11-12）、E5 规格定稿；调整由 owner 指示，实现/验证状态仍为 Not Implemented / Not Verified)
 
 **E7 定档决策记录：** 插件模型/RoleProfile/WorkspaceComposition/依赖治理映射为新增阶段 E7、前置交付 V1.0（而非并入 Beta 0.5）。理由：ADR-027 禁止插件化扩张既有 Alpha/Beta 交付范围；Beta 0.5 已冻结为内容增量；V1.0 的"个人工作与成长平台"定位即角色化组合的收口。如 owner 后续改判，修订本节即可。
 
@@ -24,7 +24,7 @@ Windows 桌面应用（Windows-only 交付与验收，macOS 见 ADR-021）；Goa
 
 **前置门禁：** 外部 Agent 执行启用前，[ADR-022](../03-adr/ADR-022-workbench-hermes-boundary.md)（Workbench ↔ Hermes 边界）必须先批准为 Accepted。
 
-**E5 设计基线更新（ADR-026/029，Proposed）：** E5 的"Agent adapter 与受控授权"不再按临时授权方案实现，而以 [ADR-026](../03-adr/ADR-026-capability-registry-and-ai-invocation.md)（能力注册表与五层调用治理）和 [ADR-029](../03-adr/ADR-029-agent-invocation-security-and-approval.md)（调用安全与精确审批绑定）为设计基线：能力描述符版本化、默认拒绝、审批绑定不可变规范化计划摘要、每个副作用前重新授权、OutcomeUnknown 走 ADR-019 对账。两份 ADR 批准为 Accepted 是 E5 实现规格开工的前置；批准前 E5 只允许做实现规格草案，不进入代码实现——草案已发布：[E5-implementation-specification-draft](../05-architecture-evolution/E5-implementation-specification-draft.md)（Draft R0，含工作包分解 E5-01～06、实体草图、管线、一致性测试矩阵与前置门禁）。E0.3 §4 对 E5 的既有退出证据（fake-provider conformance、approval binding、unknown-outcome reconciliation）与 ADR-026/029 的 Validation required 一致，验收口径不变。
+**E5 设计基线（ADR-026/029，Accepted 2026-11-12）：** E5 的"Agent adapter 与受控授权"以 [ADR-026](../03-adr/ADR-026-capability-registry-and-ai-invocation.md)（能力注册表与五层调用治理）和 [ADR-029](../03-adr/ADR-029-agent-invocation-security-and-approval.md)（调用安全与精确审批绑定）为设计基线：能力描述符版本化、默认拒绝、审批绑定不可变规范化计划摘要、每个副作用前重新授权、OutcomeUnknown 走 ADR-019 对账。两份 ADR 已批准为 Accepted（R1 条件为规范性约束），实现规格已定稿：[E5-implementation-specification](../05-architecture-evolution/E5-implementation-specification.md)（Finalized R1，含工作包分解 E5-01～06、实体草图、管线、一致性测试矩阵）。**实现开工为独立 owner gate，待授权**；外部 Agent 真实启用仍以 ADR-022 批准为前置。E0.3 §4 对 E5 的既有退出证据（fake-provider conformance、approval binding、unknown-outcome reconciliation）与 ADR-026/029 的 Validation required 一致，验收口径不变。
 
 ## E7 — 领域插件与角色化组合（V1.0 前置，新增）
 
@@ -35,7 +35,7 @@ Windows 桌面应用（Windows-only 交付与验收，macOS 见 ADR-021）；Goa
 - RoleProfile 体验模板与 WorkspaceComposition 组合配置：仅存引用与展示配置，不承载授权、凭据或审批；后端授权始终以 Data Workspace 为边界。
 - 版本维度分离治理（plugin/descriptor schema/capability contract/data migration/minimum app version），破坏性变更 fail closed。
 
-**前置门禁：** ADR-023/024/025/027/028 逐份批准为 Accepted；实现规格与实现授权按项目惯例另行开闸。插件采用按 ADR-027 的领域就绪标准增量进行，不做大爆炸重写；本阶段不得加速或扩张 Learning/Beta 既定范围。
+**前置门禁：** ✅ ADR-023/024/025/027/028 已于 2026-11-12 逐份批准为 Accepted（R1 条件为规范性约束）；E7 实现规格与实现授权按项目惯例另行开闸。插件采用按 ADR-027 的领域就绪标准增量进行，不做大爆炸重写；本阶段不得加速或扩张 Learning/Beta 既定范围。
 
 ## Beta 0.5 — 内容生产与项目实践成长
 

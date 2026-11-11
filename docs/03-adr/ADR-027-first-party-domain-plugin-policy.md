@@ -1,10 +1,10 @@
 # ADR-027: First-Party Domain Plugin Policy and Learning & Growth Boundary
 
-- **Status:** Proposed (R1)
-- **Decision status:** Proposed / Not Accepted
+- **Status:** Accepted (R1)
+- **Decision status:** Accepted (repository owner decision, 2026-11-12; R1 clarifications are normative; implementation and verification remain separate gates)
 - **Implementation status:** Not Implemented
 - **Verification status:** Not Verified
-- **Date:** 2026-11-11
+- **Date:** 2026-11-11 (accepted 2026-11-12)
 - **Scope:** First-party domain plugin adoption
 - **Related:** ADR-002, ADR-013, ADR-014, ADR-015, ADR-016, ADR-018, ADR-020
 

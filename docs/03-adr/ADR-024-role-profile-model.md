@@ -1,10 +1,10 @@
 # ADR-024: Role Profile Is a User Experience Profile, Not an Authorization Role
 
-- **Status:** Proposed (R1)
-- **Decision status:** Proposed / Not Accepted
+- **Status:** Accepted (R1)
+- **Decision status:** Accepted (repository owner decision, 2026-11-12; R1 clarifications are normative; implementation and verification remain separate gates)
 - **Implementation status:** Not Implemented
 - **Verification status:** Not Verified
-- **Date:** 2026-11-11
+- **Date:** 2026-11-11 (accepted 2026-11-12)
 - **Scope:** Role templates and persona-based experience
 - **Related:** ADR-003, ADR-005, ADR-013, ADR-017, ADR-020
 
