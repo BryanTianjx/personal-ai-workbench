@@ -1,6 +1,8 @@
 //! Ports published by the application layer; adapters implement them in
 //! paw-infrastructure (ADR-018: ports are defined by the consuming layer).
 
+pub mod agent_adapter;
+pub mod agent_repository;
 pub mod area_repository;
 pub mod attachment_repository;
 pub mod audit;
@@ -12,6 +14,7 @@ pub mod file_store;
 pub mod goal_repository;
 pub mod knowledge_repository;
 pub mod learning_repository;
+pub mod operation_service;
 pub mod search;
 pub mod task_repository;
 pub mod workspace_repository;

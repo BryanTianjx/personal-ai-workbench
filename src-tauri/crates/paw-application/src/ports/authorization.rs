@@ -171,6 +171,22 @@ pub enum ProtectedAction {
     ReconcileAgentExecution {
         workspace_id: WorkspaceId,
     },
+    /// Create an agent grant (E5-02). Human-only: never grantable to agents
+    /// (authorization model §2 — Admin is reserved for the human owner).
+    CreateAgentGrant {
+        workspace_id: WorkspaceId,
+    },
+    /// Revoke an agent grant (E5-02). Human-only, same rule.
+    RevokeAgentGrant {
+        workspace_id: WorkspaceId,
+    },
+    /// A dynamic capability invocation inside the agent pipeline (E5-05).
+    /// The per-side-effect recheck authorizes the *agent subject* against
+    /// this action; the capability id comes from the resolved descriptor.
+    CapabilityInvoke {
+        workspace_id: WorkspaceId,
+        capability_id: String,
+    },
 }
 
 impl ProtectedAction {
@@ -221,6 +237,9 @@ impl ProtectedAction {
             Self::DecideApproval { .. } => "approval.decide",
             Self::RevokeApproval { .. } => "approval.revoke",
             Self::ReconcileAgentExecution { .. } => "agent.execution.reconcile",
+            Self::CreateAgentGrant { .. } => "agent.grant.create",
+            Self::RevokeAgentGrant { .. } => "agent.grant.revoke",
+            Self::CapabilityInvoke { .. } => "agent.capability.invoke",
         }
     }
 
@@ -270,7 +289,10 @@ impl ProtectedAction {
             | Self::ProposeAgentInvocation { workspace_id }
             | Self::DecideApproval { workspace_id }
             | Self::RevokeApproval { workspace_id }
-            | Self::ReconcileAgentExecution { workspace_id } => Some(workspace_id),
+            | Self::ReconcileAgentExecution { workspace_id }
+            | Self::CreateAgentGrant { workspace_id }
+            | Self::RevokeAgentGrant { workspace_id }
+            | Self::CapabilityInvoke { workspace_id, .. } => Some(workspace_id),
             Self::PurgeExpiredData => None,
         }
     }
@@ -311,4 +333,55 @@ pub trait Authorizer {
         ctx: &ExecutionContext,
         action: &ProtectedAction,
     ) -> Result<(), AuthorizationError>;
+}
+
+/// An explicit agent grant (authorization model §2; E5-02). A grant binds a
+/// subject to capabilities within a scope; possession of one capability
+/// never implies another. Grants are read fresh on every evaluation so
+/// revocation takes effect at the next side effect (ADR-029 §4.4).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AgentGrant {
+    /// Stable grant id (opaque).
+    pub id: String,
+    /// Subject the grant binds: `agent:<registration_id>` for agent
+    /// subjects; the local human subject is governed by policy, not grants.
+    pub subject_id: String,
+    /// Capability ids covered (e.g. `work_management.task.create`).
+    pub capabilities: Vec<String>,
+    /// The workspace the grant is scoped to; `None` would widen scope and
+    /// is therefore not representable — grants are workspace-bound.
+    pub workspace_id: WorkspaceId,
+    /// Optional tool keys the grant may use (empty = no tool access).
+    pub tools: Vec<String>,
+    /// Validity window (epoch millis). `valid_until_ms: None` is a
+    /// long-lived grant, still revocable at any time.
+    pub valid_from_ms: i64,
+    pub valid_until_ms: Option<i64>,
+}
+
+impl AgentGrant {
+    /// Scope is the intersection of all constraints (authorization model
+    /// §2): subject (fixed at load), capability membership, workspace and
+    /// the validity window must all hold.
+    pub fn covers(
+        &self,
+        subject_id: &str,
+        capability_id: &str,
+        workspace_id: &WorkspaceId,
+        now_ms: i64,
+    ) -> bool {
+        if self.subject_id != subject_id || self.workspace_id != *workspace_id {
+            return false;
+        }
+        if !self.capabilities.iter().any(|c| c == capability_id) {
+            return false;
+        }
+        now_ms >= self.valid_from_ms && self.valid_until_ms.is_none_or(|until| now_ms < until)
+    }
+}
+
+/// Grant storage port. Implementations must return the *current* rows so
+/// that revocation/creation takes effect on the next evaluation.
+pub trait GrantStore {
+    fn grants_for_subject(&self, subject_id: &str) -> Result<Vec<AgentGrant>, AuthorizationError>;
 }

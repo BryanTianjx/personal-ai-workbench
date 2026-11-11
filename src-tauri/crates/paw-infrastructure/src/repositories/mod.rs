@@ -6,6 +6,7 @@
 //! are absorbed by private error types so the port contracts only ever see
 //! typed, non-leaky errors.
 
+pub mod agent_governance;
 pub mod area_repository;
 pub mod attachment_repository;
 pub mod goal_repository;

@@ -6,6 +6,7 @@
 //! not depend on paw-desktop and must keep SQL row types private to this
 //! crate.
 
+pub mod agent_adapter;
 pub mod architecture_checks;
 pub mod backup;
 pub mod dashboard;
