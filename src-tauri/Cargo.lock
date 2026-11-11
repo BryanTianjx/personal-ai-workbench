@@ -2152,6 +2152,8 @@ version = "0.1.0"
 dependencies = [
  "paw-domain",
  "serde",
+ "serde_json",
+ "sha2",
  "uuid",
 ]
 

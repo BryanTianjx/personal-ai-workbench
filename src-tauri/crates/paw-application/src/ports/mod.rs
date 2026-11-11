@@ -5,6 +5,8 @@ pub mod area_repository;
 pub mod attachment_repository;
 pub mod audit;
 pub mod authorization;
+pub mod canonical_plan;
+pub mod capability;
 pub mod dashboard;
 pub mod file_store;
 pub mod goal_repository;

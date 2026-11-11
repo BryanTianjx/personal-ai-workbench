@@ -147,6 +147,30 @@ pub enum ProtectedAction {
     SetKnowledgeAvailability {
         workspace_id: WorkspaceId,
     },
+    /// Register an agent for governed invocation (E5-03).
+    RegisterAgent {
+        workspace_id: WorkspaceId,
+    },
+    /// Suspend or retire an agent registration (E5-03).
+    UpdateAgentRegistration {
+        workspace_id: WorkspaceId,
+    },
+    /// Propose a governed agent invocation through the pipeline (E5-05).
+    ProposeAgentInvocation {
+        workspace_id: WorkspaceId,
+    },
+    /// Approve or deny a pending approval (E5-04).
+    DecideApproval {
+        workspace_id: WorkspaceId,
+    },
+    /// Revoke an active approval (E5-04).
+    RevokeApproval {
+        workspace_id: WorkspaceId,
+    },
+    /// Reconcile an execution whose outcome is unresolved (E5-05; ADR-019).
+    ReconcileAgentExecution {
+        workspace_id: WorkspaceId,
+    },
 }
 
 impl ProtectedAction {
@@ -191,6 +215,12 @@ impl ProtectedAction {
             Self::UpdateKnowledgeRef { .. } => "knowledge.ref.update",
             Self::DeleteKnowledgeRef { .. } => "knowledge.ref.delete",
             Self::SetKnowledgeAvailability { .. } => "knowledge.ref.set_availability",
+            Self::RegisterAgent { .. } => "agent.register",
+            Self::UpdateAgentRegistration { .. } => "agent.registration.update",
+            Self::ProposeAgentInvocation { .. } => "agent.invoke.propose",
+            Self::DecideApproval { .. } => "approval.decide",
+            Self::RevokeApproval { .. } => "approval.revoke",
+            Self::ReconcileAgentExecution { .. } => "agent.execution.reconcile",
         }
     }
 
@@ -234,7 +264,13 @@ impl ProtectedAction {
             | Self::CreateKnowledgeRef { workspace_id }
             | Self::UpdateKnowledgeRef { workspace_id }
             | Self::DeleteKnowledgeRef { workspace_id }
-            | Self::SetKnowledgeAvailability { workspace_id } => Some(workspace_id),
+            | Self::SetKnowledgeAvailability { workspace_id }
+            | Self::RegisterAgent { workspace_id }
+            | Self::UpdateAgentRegistration { workspace_id }
+            | Self::ProposeAgentInvocation { workspace_id }
+            | Self::DecideApproval { workspace_id }
+            | Self::RevokeApproval { workspace_id }
+            | Self::ReconcileAgentExecution { workspace_id } => Some(workspace_id),
             Self::PurgeExpiredData => None,
         }
     }
