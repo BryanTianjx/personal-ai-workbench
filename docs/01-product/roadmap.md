@@ -24,7 +24,7 @@ Windows 桌面应用（Windows-only 交付与验收，macOS 见 ADR-021）；Goa
 
 **前置门禁：** 外部 Agent 执行启用前，[ADR-022](../03-adr/ADR-022-workbench-hermes-boundary.md)（Workbench ↔ Hermes 边界）必须先批准为 Accepted。
 
-**E5 设计基线更新（ADR-026/029，Proposed）：** E5 的"Agent adapter 与受控授权"不再按临时授权方案实现，而以 [ADR-026](../03-adr/ADR-026-capability-registry-and-ai-invocation.md)（能力注册表与五层调用治理）和 [ADR-029](../03-adr/ADR-029-agent-invocation-security-and-approval.md)（调用安全与精确审批绑定）为设计基线：能力描述符版本化、默认拒绝、审批绑定不可变规范化计划摘要、每个副作用前重新授权、OutcomeUnknown 走 ADR-019 对账。两份 ADR 批准为 Accepted 是 E5 实现规格开工的前置；批准前 E5 只允许做实现规格草案，不进入代码实现。E0.3 §4 对 E5 的既有退出证据（fake-provider conformance、approval binding、unknown-outcome reconciliation）与 ADR-026/029 的 Validation required 一致，验收口径不变。
+**E5 设计基线更新（ADR-026/029，Proposed）：** E5 的"Agent adapter 与受控授权"不再按临时授权方案实现，而以 [ADR-026](../03-adr/ADR-026-capability-registry-and-ai-invocation.md)（能力注册表与五层调用治理）和 [ADR-029](../03-adr/ADR-029-agent-invocation-security-and-approval.md)（调用安全与精确审批绑定）为设计基线：能力描述符版本化、默认拒绝、审批绑定不可变规范化计划摘要、每个副作用前重新授权、OutcomeUnknown 走 ADR-019 对账。两份 ADR 批准为 Accepted 是 E5 实现规格开工的前置；批准前 E5 只允许做实现规格草案，不进入代码实现——草案已发布：[E5-implementation-specification-draft](../05-architecture-evolution/E5-implementation-specification-draft.md)（Draft R0，含工作包分解 E5-01～06、实体草图、管线、一致性测试矩阵与前置门禁）。E0.3 §4 对 E5 的既有退出证据（fake-provider conformance、approval binding、unknown-outcome reconciliation）与 ADR-026/029 的 Validation required 一致，验收口径不变。
 
 ## E7 — 领域插件与角色化组合（V1.0 前置，新增）
 
