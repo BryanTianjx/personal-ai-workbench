@@ -175,4 +175,10 @@ fn operation_queue_commands_work_through_the_api() {
     let path = api.export_operations_to_temp(&ws.id).unwrap();
     let content = std::fs::read_to_string(&path).unwrap();
     assert!(content.contains("export.data"));
+
+    // The consequential command ran under a durable envelope: the queue now
+    // shows a succeeded data.export operation (E3-05 windowed-run fix).
+    let queue = api.list_operations(&ws.id).unwrap();
+    assert!(queue.iter().any(|o| o.kind == "data.export"
+        && o.status == paw_infrastructure::operations::OperationStatus::Succeeded));
 }

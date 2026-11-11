@@ -475,7 +475,10 @@ impl WorkManagementApi {
     }
 
     /// Export the workspace's durable-operation history to a temp JSON file
-    /// and return its path (pre-purge user-initiated step; audited).
+    /// and return its path (pre-purge user-initiated step; audited). The
+    /// command itself runs under a durable operation envelope so the queue
+    /// view shows the consequential action (E3-05 windowed-run fix: the
+    /// queue was unverifiable because no Alpha 0.1 flow opened envelopes).
     pub fn export_operations_to_temp(
         &self,
         workspace_id: &WorkspaceId,
@@ -493,34 +496,88 @@ impl WorkManagementApi {
             "operation",
             None,
         )?;
-        let json = paw_infrastructure::retention::export_operations_json(
+        // Durable envelope for the consequential command (E0.3.2 §2: a
+        // bounded unit of work with persisted progress).
+        let envelope = paw_infrastructure::operations::create_operation(
             &self.coordination,
-            workspace_id.as_str(),
+            &paw_infrastructure::operations::NewOperation {
+                kind: "data.export".into(),
+                owner_domain: "system_security".into(),
+                owner_type: "workspace".into(),
+                owner_id: workspace_id.as_str().to_string(),
+                workspace_id: Some(workspace_id.as_str().to_string()),
+                actor_id: ctx.actor_id.clone(),
+                correlation_id: ctx.correlation_id.clone(),
+                causation_id: None,
+                cancellation_support:
+                    paw_infrastructure::operations::CancellationSupport::Unsupported,
+            },
         )
-        .map_err(|_| CommandError::Unexpected)?;
-        let dir = std::env::temp_dir().join("paw-exports");
-        std::fs::create_dir_all(&dir).map_err(CommandError::from_io)?;
-        let path = dir.join(format!(
-            "operations-{}-{}.json",
-            workspace_id.as_str(),
-            paw_infrastructure::sqlite::now_ms().map_err(|_| CommandError::Unexpected)?
-        ));
-        std::fs::write(&path, json).map_err(CommandError::from_io)?;
+        .map_err(map_operation_error)?;
+        paw_infrastructure::operations::transition(
+            &self.coordination,
+            &envelope.id,
+            paw_infrastructure::operations::OperationStatus::Running,
+            None,
+        )
+        .map_err(map_operation_error)?;
+
+        let result = (|| {
+            let json = paw_infrastructure::retention::export_operations_json(
+                &self.coordination,
+                workspace_id.as_str(),
+            )
+            .map_err(|_| CommandError::Unexpected)?;
+            let dir = std::env::temp_dir().join("paw-exports");
+            std::fs::create_dir_all(&dir).map_err(CommandError::from_io)?;
+            let path = dir.join(format!(
+                "operations-{}-{}.json",
+                workspace_id.as_str(),
+                paw_infrastructure::sqlite::now_ms().map_err(|_| CommandError::Unexpected)?
+            ));
+            std::fs::write(&path, json).map_err(CommandError::from_io)?;
+            Ok::<String, CommandError>(path.to_string_lossy().into_owned())
+        })();
+
+        match &result {
+            Ok(_) => {
+                paw_infrastructure::operations::transition(
+                    &self.coordination,
+                    &envelope.id,
+                    paw_infrastructure::operations::OperationStatus::Succeeded,
+                    None,
+                )
+                .map_err(map_operation_error)?;
+            }
+            Err(_) => {
+                paw_infrastructure::operations::transition(
+                    &self.coordination,
+                    &envelope.id,
+                    paw_infrastructure::operations::OperationStatus::Failed,
+                    Some("export_failed"),
+                )
+                .map_err(map_operation_error)?;
+            }
+        }
+
+        let path = result?;
         self.audit
             .record(&paw_application::ports::audit::AuditEvent {
                 workspace_id: Some(workspace_id.clone()),
                 actor_id: ctx.actor_id.clone(),
                 action: action.action_key(),
                 resource_type: "export",
-                resource_id: Some(path.to_string_lossy().into_owned()),
+                resource_id: Some(path.clone()),
                 outcome: paw_application::ports::audit::AuditOutcome::Allowed,
                 correlation_id: ctx.correlation_id.clone(),
             });
-        Ok(path.to_string_lossy().into_owned())
+        Ok(path)
     }
 
     /// Purge expired operations and audit rows under the default policy
-    /// (gated, audited, explicit — no background purge exists).
+    /// (gated, audited, explicit — no background purge exists). Runs under
+    /// a system-scope durable envelope (E3-05 windowed-run fix, same as
+    /// export).
     pub fn purge_expired(&self) -> Result<(usize, usize, usize), CommandError> {
         let ctx = self.context();
         let action = paw_application::ports::authorization::ProtectedAction::PurgeExpiredData;
@@ -533,19 +590,70 @@ impl WorkManagementApi {
             "data",
             None,
         )?;
-        let now = paw_infrastructure::sqlite::now_ms().map_err(|_| CommandError::Unexpected)?;
-        let (operations, attempts) = paw_infrastructure::retention::purge_expired_operations(
+        // Durable system-scope envelope for the consequential purge.
+        let envelope = paw_infrastructure::operations::create_operation(
             &self.coordination,
-            now,
-            &Default::default(),
+            &paw_infrastructure::operations::NewOperation {
+                kind: "data.purge".into(),
+                owner_domain: "system_security".into(),
+                owner_type: "system".into(),
+                owner_id: "retention".into(),
+                workspace_id: None,
+                actor_id: ctx.actor_id.clone(),
+                correlation_id: ctx.correlation_id.clone(),
+                causation_id: None,
+                cancellation_support:
+                    paw_infrastructure::operations::CancellationSupport::Unsupported,
+            },
         )
-        .map_err(|_| CommandError::Unexpected)?;
-        let audit_rows = paw_infrastructure::retention::purge_expired_audit_events(
+        .map_err(map_operation_error)?;
+        paw_infrastructure::operations::transition(
             &self.coordination,
-            now,
-            &Default::default(),
+            &envelope.id,
+            paw_infrastructure::operations::OperationStatus::Running,
+            None,
         )
-        .map_err(|_| CommandError::Unexpected)?;
+        .map_err(map_operation_error)?;
+
+        let result = (|| {
+            let now = paw_infrastructure::sqlite::now_ms().map_err(|_| CommandError::Unexpected)?;
+            let operations = paw_infrastructure::retention::purge_expired_operations(
+                &self.coordination,
+                now,
+                &Default::default(),
+            )
+            .map_err(|_| CommandError::Unexpected)?;
+            let audit_rows = paw_infrastructure::retention::purge_expired_audit_events(
+                &self.coordination,
+                now,
+                &Default::default(),
+            )
+            .map_err(|_| CommandError::Unexpected)?;
+            Ok::<_, CommandError>((operations.0, operations.1, audit_rows))
+        })();
+
+        match &result {
+            Ok(_) => {
+                paw_infrastructure::operations::transition(
+                    &self.coordination,
+                    &envelope.id,
+                    paw_infrastructure::operations::OperationStatus::Succeeded,
+                    None,
+                )
+                .map_err(map_operation_error)?;
+            }
+            Err(_) => {
+                paw_infrastructure::operations::transition(
+                    &self.coordination,
+                    &envelope.id,
+                    paw_infrastructure::operations::OperationStatus::Failed,
+                    Some("purge_failed"),
+                )
+                .map_err(map_operation_error)?;
+            }
+        }
+
+        let (operations, attempts, audit_rows) = result?;
         self.audit
             .record(&paw_application::ports::audit::AuditEvent {
                 workspace_id: None,
