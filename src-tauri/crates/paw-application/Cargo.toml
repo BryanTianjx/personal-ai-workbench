@@ -12,3 +12,8 @@ paw-domain = { path = "../paw-domain" }
 # contract surface); no infrastructure types leak through it.
 serde = { version = "1", features = ["derive"] }
 uuid = { version = "1", features = ["v7"] }
+# Canonical invocation-plan encoding: deterministic compact JSON with sorted
+# keys (E5-02; `ports::canonical_plan`). No infrastructure types leak.
+serde_json = "1"
+# SHA-256 digests for canonical invocation plans (E5-02; approval binding).
+sha2 = "0.10"

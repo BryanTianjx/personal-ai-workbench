@@ -577,3 +577,122 @@ pub fn record_attempt(
     )?;
     Ok(id)
 }
+
+// ---------------------------------------------------------------------------
+// OperationService port adapter (E5-05): the coordination layer's view of
+// the durable envelope. State-machine policy stays in the functions above
+// (and the domain machine); this adapter only translates DTOs across the
+// port so no infrastructure type leaks into paw-application (ADR-018).
+// ---------------------------------------------------------------------------
+
+use paw_application::ports::operation_service::{
+    OpenOperation, OperationEnvelope, OperationPortError, OperationService,
+};
+
+/// SQLite-backed [`OperationService`] over the E1/E3 operations service.
+pub struct SqliteOperationService {
+    conn: Connection,
+}
+
+impl SqliteOperationService {
+    pub fn new(conn: Connection) -> Self {
+        Self { conn }
+    }
+}
+
+fn envelope(row: OperationRow) -> OperationEnvelope {
+    OperationEnvelope {
+        id: row.id,
+        status: row.status,
+        correlation_id: row.correlation_id,
+    }
+}
+
+fn port_error(e: OperationError) -> OperationPortError {
+    match e {
+        OperationError::NotFound(id) => OperationPortError::NotFound(id),
+        OperationError::InvalidTransition { from, to } => {
+            OperationPortError::InvalidTransition { from, to }
+        }
+        other => OperationPortError::Storage(other.to_string()),
+    }
+}
+
+impl OperationService for SqliteOperationService {
+    fn open(&self, open: &OpenOperation) -> Result<OperationEnvelope, OperationPortError> {
+        let new = NewOperation {
+            kind: open.kind.clone(),
+            owner_domain: open.owner_domain.clone(),
+            owner_type: open.owner_type.clone(),
+            owner_id: open.owner_id.clone(),
+            workspace_id: open.workspace_id.clone(),
+            actor_id: open.actor_id.clone(),
+            correlation_id: open.correlation_id.clone(),
+            causation_id: open.causation_id.clone(),
+            // Agent invocations declare cooperative cancellation support:
+            // the pipeline stops before dispatch when re-authorization
+            // fails (E5-implementation-specification §8).
+            cancellation_support: CancellationSupport::Supported,
+        };
+        create_operation(&self.conn, &new)
+            .map(envelope)
+            .map_err(port_error)
+    }
+
+    fn get(&self, id: &str) -> Result<OperationEnvelope, OperationPortError> {
+        get_operation(&self.conn, id)
+            .map_err(port_error)?
+            .map(envelope)
+            .ok_or_else(|| OperationPortError::NotFound(id.to_string()))
+    }
+
+    fn transition(
+        &self,
+        id: &str,
+        to: OperationStatus,
+        error_category: Option<&str>,
+    ) -> Result<OperationEnvelope, OperationPortError> {
+        transition(&self.conn, id, to, error_category)
+            .map(envelope)
+            .map_err(port_error)
+    }
+
+    fn record_attempt(
+        &self,
+        operation_id: &str,
+        attempt: &paw_application::ports::operation_service::ExternalAttempt,
+    ) -> Result<(), OperationPortError> {
+        use paw_application::ports::operation_service::{
+            AttemptOutcome as PortOutcome, AttemptPhase as PortPhase,
+        };
+        let phase = match attempt.phase {
+            PortPhase::Submit => AttemptPhase::Submit,
+            PortPhase::Poll => AttemptPhase::Poll,
+            PortPhase::Cancel => AttemptPhase::Cancel,
+            PortPhase::Reconcile => AttemptPhase::Reconcile,
+        };
+        let outcome = match attempt.outcome {
+            PortOutcome::Started => AttemptOutcome::Started,
+            PortOutcome::Rejected => AttemptOutcome::Rejected,
+            PortOutcome::Accepted => AttemptOutcome::Accepted,
+            PortOutcome::Completed => AttemptOutcome::Completed,
+            PortOutcome::Failed => AttemptOutcome::Failed,
+            PortOutcome::Indeterminate => AttemptOutcome::Indeterminate,
+            PortOutcome::Cancelled => AttemptOutcome::Cancelled,
+        };
+        record_attempt(
+            &self.conn,
+            operation_id,
+            phase,
+            outcome,
+            attempt.request_digest.as_deref(),
+            attempt.idempotency_key.as_deref(),
+            attempt.external_reference.as_deref(),
+            attempt.retryable,
+            attempt.error_category.as_deref(),
+            attempt.error_code.as_deref(),
+        )
+        .map(|_| ())
+        .map_err(port_error)
+    }
+}

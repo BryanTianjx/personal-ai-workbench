@@ -15,21 +15,129 @@
 use std::os::windows::process::CommandExt;
 use std::path::Path;
 
+use paw_application::ports::agent_repository::AgentStoreError;
 use paw_application::ports::audit::AuditSink as _;
 use paw_application::ports::authorization::ExecutionContext;
 use paw_application::ports::workspace_repository::WorkspaceRepositoryError;
 use paw_application::use_cases::work_management::{self as use_cases, WorkManagementError};
 use paw_application::{
-    Area, AreaId, Availability, Goal, GoalId, Item, ItemId, ItemKind, ItemStatus, KnowledgeRefId,
-    KnowledgeSource, Plan, PlanId, PlanStatus, Project, ProjectId, ProjectStatus, Roadmap,
-    RoadmapId, Session, SessionId, Task, TaskId, TaskStatus, ValidationError, Workspace,
-    WorkspaceId,
+    AgentExecution, AgentRegistration, Approval, Area, AreaId, Availability, Goal, GoalId, Item,
+    ItemId, ItemKind, ItemStatus, KnowledgeRefId, KnowledgeSource, Plan, PlanId, PlanStatus,
+    Project, ProjectId, ProjectStatus, Roadmap, RoadmapId, Session, SessionId, Task, TaskId,
+    TaskStatus, ValidationError, Workspace, WorkspaceId,
+};
+use paw_infrastructure::repositories::agent_governance::{
+    SqliteAgentExecutionRepository, SqliteAgentGrantRepository, SqliteAgentRegistrationRepository,
+    SqliteApprovalRepository,
 };
 use paw_infrastructure::repositories::area_repository::SqliteAreaRepository;
 use paw_infrastructure::repositories::goal_repository::SqliteGoalRepository;
 use paw_infrastructure::repositories::task_repository::SqliteTaskRepository;
 use paw_infrastructure::repositories::workspace_repository::SqliteWorkspaceRepository;
-use paw_infrastructure::security::{LOCAL_ACTOR_ID, LocalSingleUserAuthorizer, SqliteAuditSink};
+use paw_infrastructure::security::{GovernedAuthorizer, LOCAL_ACTOR_ID, SqliteAuditSink};
+use std::collections::BTreeMap;
+
+/// The statically registered capability catalog (E5-01; ADR-026): one
+/// descriptor per governed domain capability, built once at startup. The
+/// set mirrors the already-gated Api surface — no new business capability
+/// is introduced by the registry itself. `High` risk forces the approval
+/// path; medium/low run under grants + audit only.
+fn build_capability_registry() -> paw_application::ports::capability::CapabilityRegistry {
+    use paw_application::ports::capability::{
+        ApprovalHint, CapabilityDescriptor, CapabilityDomain, CapabilityRegistry, ContractVersion,
+        Idempotency, OfflinePolicy, RiskClass, ScopeRequirement,
+    };
+    let mut registry = CapabilityRegistry::new();
+    let mut register = |id: &str,
+                        owner: CapabilityDomain,
+                        risk: RiskClass,
+                        idempotency: Idempotency,
+                        offline: OfflinePolicy,
+                        summary: &str| {
+        registry
+            .register(CapabilityDescriptor {
+                id: id.to_string(),
+                owner,
+                contract_version: ContractVersion::new(1, 0, 0),
+                required_scope: ScopeRequirement::none(),
+                risk_class: risk,
+                idempotency,
+                offline_behavior: offline,
+                approval_hint: if risk == RiskClass::High {
+                    ApprovalHint::Required
+                } else {
+                    ApprovalHint::None
+                },
+                summary: summary.to_string(),
+            })
+            .expect("static capability catalog is valid");
+    };
+    register(
+        "work_management.task.create",
+        CapabilityDomain::WorkManagement,
+        RiskClass::Low,
+        Idempotency::Idempotent,
+        OfflinePolicy::LocalOnly,
+        "create a task in Work Management",
+    );
+    register(
+        "work_management.task.update",
+        CapabilityDomain::WorkManagement,
+        RiskClass::Low,
+        Idempotency::Idempotent,
+        OfflinePolicy::LocalOnly,
+        "update task details or status",
+    );
+    register(
+        "work_management.task.delete",
+        CapabilityDomain::WorkManagement,
+        RiskClass::Medium,
+        Idempotency::Idempotent,
+        OfflinePolicy::LocalOnly,
+        "delete a task",
+    );
+    register(
+        "learning.item.create",
+        CapabilityDomain::LearningGrowth,
+        RiskClass::Low,
+        Idempotency::Idempotent,
+        OfflinePolicy::LocalOnly,
+        "create a learning item",
+    );
+    register(
+        "knowledge.ref.create",
+        CapabilityDomain::KnowledgeContext,
+        RiskClass::Low,
+        Idempotency::Idempotent,
+        OfflinePolicy::LocalOnly,
+        "create a knowledge reference",
+    );
+    register(
+        "knowledge.ref.update",
+        CapabilityDomain::KnowledgeContext,
+        RiskClass::Low,
+        Idempotency::Idempotent,
+        OfflinePolicy::LocalOnly,
+        "update knowledge reference metadata",
+    );
+    register(
+        "data.export",
+        CapabilityDomain::SystemSecurity,
+        RiskClass::Medium,
+        Idempotency::Idempotent,
+        OfflinePolicy::LocalOnly,
+        "export workspace data",
+    );
+    register(
+        "data.purge",
+        CapabilityDomain::SystemSecurity,
+        RiskClass::High,
+        Idempotency::NonIdempotent,
+        OfflinePolicy::LocalOnly,
+        "purge expired data (destructive)",
+    );
+    registry
+}
 
 /// Work Management command surface constructed once at startup over the
 /// authoritative local database (ADR-006: one `app.sqlite`). It owns the
@@ -53,7 +161,23 @@ pub struct WorkManagementApi {
     /// Coordination connection for the durable-operations services (E3):
     /// operations, outbox and retention operate on raw rusqlite connections.
     coordination: rusqlite::Connection,
-    authorizer: LocalSingleUserAuthorizer,
+    /// AI Collaboration governance stores (E5): registrations, executions,
+    /// approvals and agent grants behind the governed authorizer.
+    agent_registrations: SqliteAgentRegistrationRepository,
+    agent_executions: SqliteAgentExecutionRepository,
+    approvals: SqliteApprovalRepository,
+    agent_grants: SqliteAgentGrantRepository,
+    /// The mediated adapter for the fake transport (E5 conformance surface;
+    /// real transports wait for ADR-022).
+    fake_adapter: paw_infrastructure::agent_adapter::FakeAgentAdapter,
+    /// Metadata-only capability registry, statically built at startup
+    /// (ADR-026; no dynamic loading).
+    registry: paw_application::ports::capability::CapabilityRegistry,
+    /// The governed authorizer: local policy for the human subject, fresh
+    /// grant evaluation for agent subjects (E5-02).
+    authorizer: GovernedAuthorizer<SqliteAgentGrantRepository>,
+    /// Durable envelope port for the invocation pipeline.
+    operations_service: paw_infrastructure::operations::SqliteOperationService,
     audit: SqliteAuditSink,
 }
 
@@ -104,7 +228,19 @@ impl WorkManagementApi {
                 }
             })?,
             coordination: paw_infrastructure::sqlite::open(db_path)?,
-            authorizer: LocalSingleUserAuthorizer,
+            agent_registrations: SqliteAgentRegistrationRepository::open(db_path)?,
+            agent_executions: SqliteAgentExecutionRepository::open(db_path)?,
+            approvals: SqliteApprovalRepository::open(db_path)?,
+            agent_grants: SqliteAgentGrantRepository::open(db_path)?,
+            fake_adapter: paw_infrastructure::agent_adapter::FakeAgentAdapter::new(),
+            registry: build_capability_registry(),
+            authorizer: {
+                let grants = SqliteAgentGrantRepository::open(db_path)?;
+                GovernedAuthorizer::new(grants)
+            },
+            operations_service: paw_infrastructure::operations::SqliteOperationService::new(
+                paw_infrastructure::sqlite::open(db_path)?,
+            ),
             audit: SqliteAuditSink::open(db_path)?,
         })
     }
@@ -1329,6 +1465,416 @@ impl WorkManagementApi {
     ) -> Result<Vec<Task>, WorkManagementError> {
         use_cases::task::list_tasks(&self.tasks, workspace_id, project_id, status)
     }
+
+    // -- Agent governance (E5, PAW-INF-005/006) ----------------------------------
+
+    fn coordinator(
+        &self,
+    ) -> paw_application::use_cases::agent_invocation::AgentInvocationCoordinator<
+        '_,
+        paw_infrastructure::operations::SqliteOperationService,
+        SqliteAgentRegistrationRepository,
+        SqliteAgentExecutionRepository,
+        SqliteApprovalRepository,
+        GovernedAuthorizer<SqliteAgentGrantRepository>,
+        paw_infrastructure::agent_adapter::FakeAgentAdapter,
+    > {
+        paw_application::use_cases::agent_invocation::AgentInvocationCoordinator::new(
+            &self.operations_service,
+            &self.agent_registrations,
+            &self.agent_executions,
+            &self.approvals,
+            &self.authorizer,
+            &self.fake_adapter,
+            &self.registry,
+        )
+    }
+
+    fn now_ms(&self) -> i64 {
+        self.coordination
+            .query_row(
+                "SELECT CAST(strftime('%s','now') AS INTEGER) * 1000",
+                [],
+                |r| r.get::<_, i64>(0),
+            )
+            .unwrap_or_default()
+    }
+
+    /// Register an agent for governed invocation (human-only action).
+    pub fn register_agent(
+        &self,
+        workspace_id: &WorkspaceId,
+        display_name: &str,
+        adapter_kind: &str,
+    ) -> Result<AgentRegistration, CommandError> {
+        let ctx = self.context();
+        check_gate(
+            &self.authorizer,
+            &self.audit,
+            &ctx,
+            &paw_application::ports::authorization::ProtectedAction::RegisterAgent {
+                workspace_id: workspace_id.clone(),
+            },
+            Some(workspace_id),
+            "agent_registration",
+            None,
+        )?;
+        let kind = paw_application::AdapterKind::parse(adapter_kind)
+            .unwrap_or(paw_application::AdapterKind::Fake);
+        let registration = AgentRegistration::new(
+            paw_application::AgentRegistrationId::new_v7(),
+            workspace_id.clone(),
+            display_name,
+            kind,
+            // Declared capabilities start empty; grants — not declarations —
+            // authorize (ADR-027).
+            Vec::new(),
+        )
+        .map_err(|_| CommandError::EmptyName)?;
+        use paw_application::ports::agent_repository::AgentRegistrationRepository as _;
+        self.agent_registrations
+            .insert_registration(&registration)
+            .map_err(CommandError::from)?;
+        self.audit
+            .record(&paw_application::ports::audit::AuditEvent {
+                workspace_id: Some(workspace_id.clone()),
+                actor_id: ctx.actor_id.clone(),
+                action: "agent.register",
+                resource_type: "agent_registration",
+                resource_id: Some(registration.id.as_str().to_string()),
+                outcome: paw_application::ports::audit::AuditOutcome::Allowed,
+                correlation_id: ctx.correlation_id.clone(),
+            });
+        Ok(registration)
+    }
+
+    /// Suspend/retire/reactivate a registration (human-only action).
+    pub fn update_agent_registration(
+        &self,
+        workspace_id: &WorkspaceId,
+        registration_id: &str,
+        new_status: &str,
+    ) -> Result<AgentRegistration, CommandError> {
+        let ctx = self.context();
+        check_gate(
+            &self.authorizer,
+            &self.audit,
+            &ctx,
+            &paw_application::ports::authorization::ProtectedAction::UpdateAgentRegistration {
+                workspace_id: workspace_id.clone(),
+            },
+            Some(workspace_id),
+            "agent_registration",
+            Some(registration_id),
+        )?;
+        let id = paw_application::AgentRegistrationId::new(registration_id)
+            .map_err(|_| CommandError::InvalidWorkspaceId)?;
+        use paw_application::ports::agent_repository::AgentRegistrationRepository as _;
+        let mut registration = self
+            .agent_registrations
+            .get_registration(&id, workspace_id)
+            .map_err(CommandError::from)?;
+        let status = paw_application::RegistrationStatus::parse(new_status)
+            .ok_or(CommandError::Unexpected)?;
+        if !registration.status.can_transition_to(status) {
+            return Err(CommandError::TaskStatusInvalid);
+        }
+        registration.status = status;
+        self.agent_registrations
+            .update_registration_status(&registration)
+            .map_err(CommandError::from)?;
+        Ok(registration)
+    }
+
+    pub fn list_agents(
+        &self,
+        workspace_id: &WorkspaceId,
+    ) -> Result<Vec<AgentRegistration>, CommandError> {
+        use paw_application::ports::agent_repository::AgentRegistrationRepository as _;
+        self.agent_registrations
+            .list_registrations(workspace_id)
+            .map_err(CommandError::from)
+    }
+
+    /// Run the governed invocation pipeline (step 1–7). The proposing
+    /// actor is the local human; the invocation itself runs as the agent
+    /// subject against its grants (ADR-029 §4.1).
+    pub fn propose_agent_invocation(
+        &self,
+        workspace_id: &WorkspaceId,
+        registration_id: &str,
+        capability_id: &str,
+        contract_version: &str,
+        parameters_json: &str,
+    ) -> Result<AgentProposalOutcome, CommandError> {
+        let ctx = self.context();
+        check_gate(
+            &self.authorizer,
+            &self.audit,
+            &ctx,
+            &paw_application::ports::authorization::ProtectedAction::ProposeAgentInvocation {
+                workspace_id: workspace_id.clone(),
+            },
+            Some(workspace_id),
+            "agent_execution",
+            None,
+        )?;
+        let id = paw_application::AgentRegistrationId::new(registration_id)
+            .map_err(|_| CommandError::InvalidWorkspaceId)?;
+        let version = parse_contract_version(contract_version)?;
+        let parameters: BTreeMap<String, paw_application::ports::canonical_plan::PlanValue> =
+            serde_json::from_str(parameters_json).unwrap_or_default();
+        let proposal = paw_application::use_cases::agent_invocation::AgentProposal {
+            workspace_id: workspace_id.clone(),
+            registration_id: id,
+            capability_id: capability_id.to_string(),
+            capability_contract_version: version,
+            parameters,
+            correlation_id: ctx.correlation_id.clone(),
+            approval_ttl_ms: 15 * 60 * 1000,
+            attempt_policy: paw_application::AttemptPolicy::Single,
+        };
+        let outcome = self
+            .coordinator()
+            .propose(&proposal, ctx.actor_id.as_str(), self.now_ms())
+            .map_err(CommandError::from)?;
+        Ok(match outcome {
+            paw_application::use_cases::agent_invocation::ProposalOutcome::Completed {
+                execution,
+                operation,
+                summary,
+            } => AgentProposalOutcome {
+                status: AgentProposalStatus::Completed,
+                execution,
+                operation: Some(OperationEnvelopeDto {
+                    id: operation.id,
+                    status: operation.status.as_str().to_string(),
+                    correlation_id: operation.correlation_id,
+                }),
+                display: None,
+                summary: Some(summary),
+            },
+            paw_application::use_cases::agent_invocation::ProposalOutcome::AwaitingApproval {
+                execution,
+                display,
+            } => AgentProposalOutcome {
+                status: AgentProposalStatus::AwaitingApproval,
+                execution,
+                operation: None,
+                display: Some(ApprovalDisplayDto {
+                    execution_id: display.execution_id,
+                    capability_id: display.capability_id,
+                    capability_contract_version: display.capability_contract_version,
+                    tool_adapter: display.tool_adapter,
+                    target_identity: display.target_identity,
+                    side_effect_set: display.side_effect_set,
+                    risk_class: display.risk_class,
+                    expires_at_ms: display.expires_at_ms,
+                    attempt_policy: format!("{:?}", display.attempt_policy).to_lowercase(),
+                }),
+                summary: None,
+            },
+        })
+    }
+
+    /// Human decision on a pending approval (approve runs the parked
+    /// execution; deny revokes the approval and cancels).
+    pub fn decide_approval(
+        &self,
+        workspace_id: &WorkspaceId,
+        execution_id: &str,
+        approve: bool,
+    ) -> Result<Option<AgentRunOutcomeDto>, CommandError> {
+        let ctx = self.context();
+        check_gate(
+            &self.authorizer,
+            &self.audit,
+            &ctx,
+            &paw_application::ports::authorization::ProtectedAction::DecideApproval {
+                workspace_id: workspace_id.clone(),
+            },
+            Some(workspace_id),
+            "agent_execution",
+            Some(execution_id),
+        )?;
+        let id = paw_application::AgentExecutionId::new(execution_id)
+            .map_err(|_| CommandError::InvalidWorkspaceId)?;
+        let decision = if approve {
+            paw_application::use_cases::agent_invocation::ApprovalDecision::Approve
+        } else {
+            paw_application::use_cases::agent_invocation::ApprovalDecision::Deny
+        };
+        let outcome = self
+            .coordinator()
+            .decide_approval(workspace_id, &id, decision, self.now_ms())
+            .map_err(CommandError::from)?;
+        self.audit
+            .record(&paw_application::ports::audit::AuditEvent {
+                workspace_id: Some(workspace_id.clone()),
+                actor_id: ctx.actor_id.clone(),
+                action: "approval.decide",
+                resource_type: "agent_execution",
+                resource_id: Some(execution_id.to_string()),
+                outcome: paw_application::ports::audit::AuditOutcome::Allowed,
+                correlation_id: ctx.correlation_id.clone(),
+            });
+        Ok(outcome.map(AgentRunOutcomeDto::from))
+    }
+
+    /// Revoke an active approval (human-only).
+    pub fn revoke_approval(
+        &self,
+        workspace_id: &WorkspaceId,
+        approval_id: &str,
+    ) -> Result<(), CommandError> {
+        let ctx = self.context();
+        check_gate(
+            &self.authorizer,
+            &self.audit,
+            &ctx,
+            &paw_application::ports::authorization::ProtectedAction::RevokeApproval {
+                workspace_id: workspace_id.clone(),
+            },
+            Some(workspace_id),
+            "approval",
+            Some(approval_id),
+        )?;
+        let id = paw_application::ApprovalId::new(approval_id)
+            .map_err(|_| CommandError::InvalidWorkspaceId)?;
+        use paw_application::ports::agent_repository::ApprovalRepository as _;
+        let mut approval = self
+            .approvals
+            .get_approval(&id, workspace_id)
+            .map_err(CommandError::from)?;
+        approval
+            .revoke()
+            .map_err(|_| CommandError::ApprovalNotActive)?;
+        self.approvals
+            .update_approval(&approval)
+            .map_err(CommandError::from)?;
+        Ok(())
+    }
+
+    /// Owner reconciliation of an unresolved execution (ADR-019).
+    pub fn reconcile_agent_execution(
+        &self,
+        workspace_id: &WorkspaceId,
+        execution_id: &str,
+        complete: bool,
+    ) -> Result<AgentExecution, CommandError> {
+        let ctx = self.context();
+        check_gate(
+            &self.authorizer,
+            &self.audit,
+            &ctx,
+            &paw_application::ports::authorization::ProtectedAction::ReconcileAgentExecution {
+                workspace_id: workspace_id.clone(),
+            },
+            Some(workspace_id),
+            "agent_execution",
+            Some(execution_id),
+        )?;
+        let id = paw_application::AgentExecutionId::new(execution_id)
+            .map_err(|_| CommandError::InvalidWorkspaceId)?;
+        let resolution = if complete {
+            paw_application::use_cases::agent_invocation::ReconcileResolution::Complete
+        } else {
+            paw_application::use_cases::agent_invocation::ReconcileResolution::Fail
+        };
+        self.coordinator()
+            .reconcile(workspace_id, &id, resolution, &ctx)
+            .map_err(CommandError::from)
+    }
+
+    pub fn list_agent_executions(
+        &self,
+        workspace_id: &WorkspaceId,
+        limit: usize,
+    ) -> Result<Vec<AgentExecution>, CommandError> {
+        use paw_application::ports::agent_repository::AgentExecutionRepository as _;
+        self.agent_executions
+            .list_executions(workspace_id, limit)
+            .map_err(CommandError::from)
+    }
+
+    pub fn list_pending_approvals(
+        &self,
+        workspace_id: &WorkspaceId,
+    ) -> Result<Vec<Approval>, CommandError> {
+        use paw_application::ports::agent_repository::ApprovalRepository as _;
+        self.approvals
+            .list_pending_approvals(workspace_id, self.now_ms())
+            .map_err(CommandError::from)
+    }
+
+    /// Create an agent grant (human-only; Admin is never grantable to
+    /// agents — authorization model §2).
+    pub fn create_agent_grant(
+        &self,
+        workspace_id: &WorkspaceId,
+        subject_id: &str,
+        capabilities: Vec<String>,
+        ttl_ms: Option<i64>,
+    ) -> Result<String, CommandError> {
+        let ctx = self.context();
+        check_gate(
+            &self.authorizer,
+            &self.audit,
+            &ctx,
+            &paw_application::ports::authorization::ProtectedAction::CreateAgentGrant {
+                workspace_id: workspace_id.clone(),
+            },
+            Some(workspace_id),
+            "agent_grant",
+            None,
+        )?;
+        let now = self.now_ms();
+        let grant = paw_application::ports::authorization::AgentGrant {
+            id: uuid::Uuid::now_v7().to_string(),
+            subject_id: subject_id.to_string(),
+            capabilities,
+            workspace_id: workspace_id.clone(),
+            tools: Vec::new(),
+            valid_from_ms: now,
+            valid_until_ms: ttl_ms.map(|ttl| now + ttl),
+        };
+        self.agent_grants
+            .insert_grant(&grant, ctx.actor_id.as_str())
+            .map_err(CommandError::from)?;
+        Ok(grant.id)
+    }
+
+    pub fn revoke_agent_grant(
+        &self,
+        workspace_id: &WorkspaceId,
+        grant_id: &str,
+    ) -> Result<(), CommandError> {
+        let ctx = self.context();
+        check_gate(
+            &self.authorizer,
+            &self.audit,
+            &ctx,
+            &paw_application::ports::authorization::ProtectedAction::RevokeAgentGrant {
+                workspace_id: workspace_id.clone(),
+            },
+            Some(workspace_id),
+            "agent_grant",
+            Some(grant_id),
+        )?;
+        self.agent_grants
+            .delete_grant(grant_id, workspace_id)
+            .map_err(CommandError::from)
+    }
+
+    pub fn list_agent_grants(
+        &self,
+        workspace_id: &WorkspaceId,
+        subject_id: Option<&str>,
+    ) -> Result<Vec<paw_application::ports::authorization::AgentGrant>, CommandError> {
+        self.agent_grants
+            .list_grants(workspace_id, subject_id)
+            .map_err(CommandError::from)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1378,6 +1924,16 @@ pub enum CommandError {
     LearningRecordNotFound,
     /// The referenced knowledge reference does not exist (E4).
     KnowledgeRefNotFound,
+    /// The referenced agent registration does not exist (E5).
+    AgentRegistrationNotFound,
+    /// The referenced agent execution does not exist (E5).
+    AgentExecutionNotFound,
+    /// The referenced approval does not exist (E5).
+    ApprovalNotFound,
+    /// No active approval exists for this execution (E5).
+    ApprovalNotActive,
+    /// The capability id or contract version is not published (E5).
+    CapabilityUnsupported,
     /// Fresh authorization refused the protected side effect (E1-09).
     Denied,
     /// Any other failure; details stay on the Rust side.
@@ -1457,12 +2013,162 @@ fn map_classification_error(
     }
 }
 
+/// E5 pipeline failures map to typed, non-leaky boundary codes.
+impl From<paw_application::use_cases::agent_invocation::AgentInvocationError> for CommandError {
+    fn from(e: paw_application::use_cases::agent_invocation::AgentInvocationError) -> Self {
+        use paw_application::use_cases::agent_invocation::AgentInvocationError as E;
+        match e {
+            E::RegistrationNotFound => Self::AgentRegistrationNotFound,
+            E::RegistrationNotActive { .. } => Self::AgentRegistrationNotFound,
+            E::CapabilityUnsupported => Self::CapabilityUnsupported,
+            E::Denied => Self::Denied,
+            E::ExecutionNotFound => Self::AgentExecutionNotFound,
+            E::ExecutionState { .. } => Self::TaskStatusInvalid,
+            E::ApprovalNotActive => Self::ApprovalNotActive,
+            E::Governance(_) | E::Store(_) | E::Adapter(_) | E::Operation(_) => Self::Unexpected,
+        }
+    }
+}
+
+impl From<AgentStoreError> for CommandError {
+    fn from(e: AgentStoreError) -> Self {
+        match e {
+            AgentStoreError::NotFound => Self::AgentRegistrationNotFound,
+            AgentStoreError::WorkspaceMismatch => Self::AgentRegistrationNotFound,
+            AgentStoreError::Invariant(_) | AgentStoreError::Storage(_) => Self::Unexpected,
+        }
+    }
+}
+
+/// Parse a `major.minor.patch` contract version string.
+fn parse_contract_version(value: &str) -> Result<(u32, u32, u32), CommandError> {
+    let parts: Vec<&str> = value.split('.').collect();
+    if parts.len() != 3 {
+        return Err(CommandError::CapabilityUnsupported);
+    }
+    let major: u32 = parts[0]
+        .parse()
+        .map_err(|_| CommandError::CapabilityUnsupported)?;
+    let minor: u32 = parts[1]
+        .parse()
+        .map_err(|_| CommandError::CapabilityUnsupported)?;
+    let patch: u32 = parts[2]
+        .parse()
+        .map_err(|_| CommandError::CapabilityUnsupported)?;
+    if major == 0 {
+        return Err(CommandError::CapabilityUnsupported);
+    }
+    Ok((major, minor, patch))
+}
+
+/// Serialized pipeline outcomes crossing the Tauri boundary (E5-06).
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentProposalStatus {
+    Completed,
+    AwaitingApproval,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct OperationEnvelopeDto {
+    pub id: String,
+    pub status: String,
+    pub correlation_id: String,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct ApprovalDisplayDto {
+    pub execution_id: String,
+    pub capability_id: String,
+    pub capability_contract_version: String,
+    pub tool_adapter: String,
+    pub target_identity: String,
+    pub side_effect_set: Vec<String>,
+    pub risk_class: String,
+    pub expires_at_ms: i64,
+    pub attempt_policy: String,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct AgentProposalOutcome {
+    pub status: AgentProposalStatus,
+    pub execution: AgentExecution,
+    pub operation: Option<OperationEnvelopeDto>,
+    pub display: Option<ApprovalDisplayDto>,
+    pub summary: Option<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentRunStatus {
+    Completed,
+    Failed,
+    Unresolved,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct AgentRunOutcomeDto {
+    pub status: AgentRunStatus,
+    pub execution: AgentExecution,
+    pub operation: OperationEnvelopeDto,
+    pub summary: String,
+}
+
+impl From<paw_application::use_cases::agent_invocation::RunOutcome> for AgentRunOutcomeDto {
+    fn from(outcome: paw_application::use_cases::agent_invocation::RunOutcome) -> Self {
+        use paw_application::use_cases::agent_invocation::RunOutcome as O;
+        match outcome {
+            O::Completed {
+                execution,
+                operation,
+                summary,
+            } => Self {
+                status: AgentRunStatus::Completed,
+                execution,
+                operation: OperationEnvelopeDto {
+                    id: operation.id,
+                    status: operation.status.as_str().to_string(),
+                    correlation_id: operation.correlation_id,
+                },
+                summary,
+            },
+            O::Failed {
+                execution,
+                operation,
+                reason,
+            } => Self {
+                status: AgentRunStatus::Failed,
+                execution,
+                operation: OperationEnvelopeDto {
+                    id: operation.id,
+                    status: operation.status.as_str().to_string(),
+                    correlation_id: operation.correlation_id,
+                },
+                summary: reason,
+            },
+            O::Unresolved {
+                execution,
+                operation,
+            } => Self {
+                status: AgentRunStatus::Unresolved,
+                execution,
+                operation: OperationEnvelopeDto {
+                    id: operation.id,
+                    status: operation.status.as_str().to_string(),
+                    correlation_id: operation.correlation_id,
+                },
+                summary: "unresolved: reconciliation required".to_string(),
+            },
+        }
+    }
+}
+
 /// Desktop-side gate: authorize `action`; on denial record the audited
 /// refusal and surface `denied`. Used by the E3 flows that operate directly
 /// on the coordination services instead of through application use cases.
 #[allow(clippy::too_many_arguments)]
 fn check_gate(
-    authorizer: &LocalSingleUserAuthorizer,
+    authorizer: &impl paw_application::ports::authorization::Authorizer,
     audit: &SqliteAuditSink,
     ctx: &ExecutionContext,
     action: &paw_application::ports::authorization::ProtectedAction,
@@ -1470,7 +2176,6 @@ fn check_gate(
     resource_type: &'static str,
     resource_id: Option<&str>,
 ) -> Result<(), CommandError> {
-    use paw_application::ports::authorization::Authorizer;
     if authorizer.authorize(ctx, action).is_err() {
         audit.record(&paw_application::ports::audit::AuditEvent {
             workspace_id: workspace_id.cloned(),
@@ -2245,6 +2950,165 @@ pub fn purge_expired_data(
         .lock()
         .expect("WorkManagementApi mutex must not be poisoned");
     api.purge_expired()
+}
+
+// -- Agent governance (E5-06) ------------------------------------------------
+
+#[tauri::command]
+pub fn register_agent(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    display_name: String,
+    adapter_kind: String,
+) -> Result<AgentRegistration, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.register_agent(&workspace_id, &display_name, &adapter_kind)
+}
+
+#[tauri::command]
+pub fn update_agent_registration(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    registration_id: String,
+    new_status: String,
+) -> Result<AgentRegistration, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.update_agent_registration(&workspace_id, &registration_id, &new_status)
+}
+
+#[tauri::command]
+pub fn list_agents(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+) -> Result<Vec<AgentRegistration>, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.list_agents(&workspace_id)
+}
+
+#[tauri::command]
+pub fn propose_agent_invocation(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    registration_id: String,
+    capability_id: String,
+    contract_version: String,
+    parameters_json: String,
+) -> Result<AgentProposalOutcome, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.propose_agent_invocation(
+        &workspace_id,
+        &registration_id,
+        &capability_id,
+        &contract_version,
+        &parameters_json,
+    )
+}
+
+#[tauri::command]
+pub fn decide_approval(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    execution_id: String,
+    approve: bool,
+) -> Result<Option<AgentRunOutcomeDto>, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.decide_approval(&workspace_id, &execution_id, approve)
+}
+
+#[tauri::command]
+pub fn revoke_approval(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    approval_id: String,
+) -> Result<(), CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.revoke_approval(&workspace_id, &approval_id)
+}
+
+#[tauri::command]
+pub fn reconcile_agent_execution(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    execution_id: String,
+    complete: bool,
+) -> Result<AgentExecution, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.reconcile_agent_execution(&workspace_id, &execution_id, complete)
+}
+
+#[tauri::command]
+pub fn list_agent_executions(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    limit: usize,
+) -> Result<Vec<AgentExecution>, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.list_agent_executions(&workspace_id, limit)
+}
+
+#[tauri::command]
+pub fn list_pending_approvals(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+) -> Result<Vec<Approval>, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.list_pending_approvals(&workspace_id)
+}
+
+#[tauri::command]
+pub fn create_agent_grant(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    subject_id: String,
+    capabilities: Vec<String>,
+    ttl_ms: Option<i64>,
+) -> Result<String, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.create_agent_grant(&workspace_id, &subject_id, capabilities, ttl_ms)
+}
+
+#[tauri::command]
+pub fn revoke_agent_grant(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    grant_id: String,
+) -> Result<(), CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.revoke_agent_grant(&workspace_id, &grant_id)
+}
+
+#[tauri::command]
+pub fn list_agent_grants(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    subject_id: Option<String>,
+) -> Result<Vec<paw_application::ports::authorization::AgentGrant>, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.list_agent_grants(&workspace_id, subject_id.as_deref())
 }
 
 #[cfg(test)]

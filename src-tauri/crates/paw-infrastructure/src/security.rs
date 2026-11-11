@@ -15,7 +15,7 @@ use rusqlite::{Connection, params};
 
 use paw_application::ports::audit::{AuditEvent, AuditSink};
 use paw_application::ports::authorization::{
-    AuthorizationError, Authorizer, ExecutionContext, ProtectedAction,
+    AuthorizationError, Authorizer, ExecutionContext, GrantStore, ProtectedAction,
 };
 
 use crate::sqlite;
@@ -71,6 +71,65 @@ impl AuditSink for SqliteAuditSink {
 /// Management capabilities; deny everything else.
 pub struct LocalSingleUserAuthorizer;
 
+/// The local single-user policy body (E1/E2/E3/E4 surface plus the E5
+/// agent-administration actions). Shared by [`LocalSingleUserAuthorizer`]
+/// and [`GovernedAuthorizer`]; `CapabilityInvoke` is deliberately absent —
+/// the human owner invokes capabilities through their concrete commands,
+/// never through the agent pipeline identity.
+fn local_policy(action: &ProtectedAction) -> Result<(), AuthorizationError> {
+    match action {
+        ProtectedAction::CreateWorkspace
+        | ProtectedAction::CreateProject { .. }
+        | ProtectedAction::UpdateProject { .. }
+        | ProtectedAction::DeleteProject { .. }
+        | ProtectedAction::DeleteWorkspace { .. }
+        | ProtectedAction::CreateArea { .. }
+        | ProtectedAction::UpdateArea { .. }
+        | ProtectedAction::DeleteArea { .. }
+        | ProtectedAction::CreateGoal { .. }
+        | ProtectedAction::UpdateGoal { .. }
+        | ProtectedAction::DeleteGoal { .. }
+        | ProtectedAction::CreateTask { .. }
+        | ProtectedAction::UpdateTask { .. }
+        | ProtectedAction::TransitionTask { .. }
+        | ProtectedAction::DeleteTask { .. }
+        | ProtectedAction::CreateAttachment { .. }
+        | ProtectedAction::DeleteAttachment { .. }
+        | ProtectedAction::CancelOperation { .. }
+        | ProtectedAction::ResumeOperation { .. }
+        | ProtectedAction::RedriveMessage { .. }
+        | ProtectedAction::ExportWorkspaceData { .. }
+        | ProtectedAction::CreateLearningRoadmap { .. }
+        | ProtectedAction::UpdateLearningRoadmap { .. }
+        | ProtectedAction::DeleteLearningRoadmap { .. }
+        | ProtectedAction::CreateLearningPlan { .. }
+        | ProtectedAction::UpdateLearningPlan { .. }
+        | ProtectedAction::DeleteLearningPlan { .. }
+        | ProtectedAction::CreateLearningItem { .. }
+        | ProtectedAction::UpdateLearningItem { .. }
+        | ProtectedAction::DeleteLearningItem { .. }
+        | ProtectedAction::AppendLearningSession { .. }
+        | ProtectedAction::LinkLearningItemProject { .. }
+        | ProtectedAction::CreateTaskForLearningItem { .. }
+        | ProtectedAction::CreateKnowledgeRef { .. }
+        | ProtectedAction::UpdateKnowledgeRef { .. }
+        | ProtectedAction::DeleteKnowledgeRef { .. }
+        | ProtectedAction::SetKnowledgeAvailability { .. }
+        | ProtectedAction::RegisterAgent { .. }
+        | ProtectedAction::UpdateAgentRegistration { .. }
+        | ProtectedAction::ProposeAgentInvocation { .. }
+        | ProtectedAction::DecideApproval { .. }
+        | ProtectedAction::RevokeApproval { .. }
+        | ProtectedAction::ReconcileAgentExecution { .. }
+        | ProtectedAction::CreateAgentGrant { .. }
+        | ProtectedAction::RevokeAgentGrant { .. }
+        | ProtectedAction::PurgeExpiredData => Ok(()),
+        // The pipeline identity is reserved for agent subjects; the human
+        // owner's concrete commands carry their own actions.
+        ProtectedAction::CapabilityInvoke { .. } => Err(AuthorizationError::Denied),
+    }
+}
+
 impl Authorizer for LocalSingleUserAuthorizer {
     fn authorize(
         &self,
@@ -80,45 +139,57 @@ impl Authorizer for LocalSingleUserAuthorizer {
         if ctx.actor_id != LOCAL_ACTOR_ID {
             return Err(AuthorizationError::Denied);
         }
+        local_policy(action)
+    }
+}
+
+/// E5 authorization policy (PAW-INF-006; ADR-029 §4.1/§4.4): the local
+/// human subject keeps the local policy; an agent subject (`agent:<id>`)
+/// is default-denied except for `CapabilityInvoke`, which is evaluated
+/// against grants read **fresh** on every check — revocation therefore
+/// takes effect at the next side effect. Grant-store failures deny.
+pub struct GovernedAuthorizer<G: GrantStore> {
+    grants: G,
+}
+
+impl<G: GrantStore> GovernedAuthorizer<G> {
+    pub fn new(grants: G) -> Self {
+        Self { grants }
+    }
+}
+
+impl<G: GrantStore> Authorizer for GovernedAuthorizer<G> {
+    fn authorize(
+        &self,
+        ctx: &ExecutionContext,
+        action: &ProtectedAction,
+    ) -> Result<(), AuthorizationError> {
+        if ctx.actor_id == LOCAL_ACTOR_ID {
+            return local_policy(action);
+        }
         match action {
-            ProtectedAction::CreateWorkspace
-            | ProtectedAction::CreateProject { .. }
-            | ProtectedAction::UpdateProject { .. }
-            | ProtectedAction::DeleteProject { .. }
-            | ProtectedAction::DeleteWorkspace { .. }
-            | ProtectedAction::CreateArea { .. }
-            | ProtectedAction::UpdateArea { .. }
-            | ProtectedAction::DeleteArea { .. }
-            | ProtectedAction::CreateGoal { .. }
-            | ProtectedAction::UpdateGoal { .. }
-            | ProtectedAction::DeleteGoal { .. }
-            | ProtectedAction::CreateTask { .. }
-            | ProtectedAction::UpdateTask { .. }
-            | ProtectedAction::TransitionTask { .. }
-            | ProtectedAction::DeleteTask { .. }
-            | ProtectedAction::CreateAttachment { .. }
-            | ProtectedAction::DeleteAttachment { .. }
-            | ProtectedAction::CancelOperation { .. }
-            | ProtectedAction::ResumeOperation { .. }
-            | ProtectedAction::RedriveMessage { .. }
-            | ProtectedAction::ExportWorkspaceData { .. }
-            | ProtectedAction::CreateLearningRoadmap { .. }
-            | ProtectedAction::UpdateLearningRoadmap { .. }
-            | ProtectedAction::DeleteLearningRoadmap { .. }
-            | ProtectedAction::CreateLearningPlan { .. }
-            | ProtectedAction::UpdateLearningPlan { .. }
-            | ProtectedAction::DeleteLearningPlan { .. }
-            | ProtectedAction::CreateLearningItem { .. }
-            | ProtectedAction::UpdateLearningItem { .. }
-            | ProtectedAction::DeleteLearningItem { .. }
-            | ProtectedAction::AppendLearningSession { .. }
-            | ProtectedAction::LinkLearningItemProject { .. }
-            | ProtectedAction::CreateTaskForLearningItem { .. }
-            | ProtectedAction::CreateKnowledgeRef { .. }
-            | ProtectedAction::UpdateKnowledgeRef { .. }
-            | ProtectedAction::DeleteKnowledgeRef { .. }
-            | ProtectedAction::SetKnowledgeAvailability { .. }
-            | ProtectedAction::PurgeExpiredData => Ok(()),
+            ProtectedAction::CapabilityInvoke {
+                workspace_id,
+                capability_id,
+            } => {
+                let now = sqlite::now_ms().map_err(|_| AuthorizationError::Denied)?;
+                let grants = self.grants.grants_for_subject(&ctx.actor_id)?;
+                // Shared policy: scope intersection evaluated on fresh rows.
+                if paw_application::ports::authorization::grant_allows(
+                    &grants,
+                    &ctx.actor_id,
+                    capability_id,
+                    workspace_id,
+                    now,
+                ) {
+                    Ok(())
+                } else {
+                    Err(AuthorizationError::Denied)
+                }
+            }
+            // Agent subjects hold no other authority: registration, grant
+            // administration and approvals are human actions.
+            _ => Err(AuthorizationError::Denied),
         }
     }
 }
