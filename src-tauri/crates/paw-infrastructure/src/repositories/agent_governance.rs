@@ -540,6 +540,26 @@ impl ApprovalRepository for SqliteApprovalRepository {
         }
         Ok(())
     }
+
+    fn find_active_by_digest(
+        &self,
+        workspace_id: &WorkspaceId,
+        canonical_digest: &str,
+    ) -> Result<Option<Approval>, AgentStoreError> {
+        let stmt = self.conn.prepare(&format!(
+            "SELECT {APPROVAL_COLUMNS} FROM approvals
+             WHERE workspace_id = ?1 AND canonical_digest = ?2 AND status = 'Active'"
+        ));
+        match query_one(
+            stmt,
+            rusqlite::params![workspace_id.as_str(), canonical_digest],
+            row_to_approval,
+        ) {
+            Ok(found) => Ok(Some(found)),
+            Err(RepoError::NotFound) => Ok(None),
+            Err(e) => Err(store_error(e)),
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

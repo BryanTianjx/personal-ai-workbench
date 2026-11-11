@@ -25,11 +25,117 @@ use paw_application::{
     RoadmapId, Session, SessionId, Task, TaskId, TaskStatus, ValidationError, Workspace,
     WorkspaceId,
 };
+use paw_infrastructure::repositories::agent_governance::{
+    SqliteAgentExecutionRepository, SqliteAgentGrantRepository, SqliteAgentRegistrationRepository,
+    SqliteApprovalRepository,
+};
 use paw_infrastructure::repositories::area_repository::SqliteAreaRepository;
 use paw_infrastructure::repositories::goal_repository::SqliteGoalRepository;
 use paw_infrastructure::repositories::task_repository::SqliteTaskRepository;
 use paw_infrastructure::repositories::workspace_repository::SqliteWorkspaceRepository;
-use paw_infrastructure::security::{LOCAL_ACTOR_ID, LocalSingleUserAuthorizer, SqliteAuditSink};
+use paw_infrastructure::security::{GovernedAuthorizer, LOCAL_ACTOR_ID, SqliteAuditSink};
+
+/// The statically registered capability catalog (E5-01; ADR-026): one
+/// descriptor per governed domain capability, built once at startup. The
+/// set mirrors the already-gated Api surface — no new business capability
+/// is introduced by the registry itself. `High` risk forces the approval
+/// path; medium/low run under grants + audit only.
+fn build_capability_registry() -> paw_application::ports::capability::CapabilityRegistry {
+    use paw_application::ports::capability::{
+        ApprovalHint, CapabilityDescriptor, CapabilityDomain, CapabilityRegistry, ContractVersion,
+        Idempotency, OfflinePolicy, RiskClass, ScopeRequirement,
+    };
+    let mut registry = CapabilityRegistry::new();
+    let mut register = |id: &str,
+                        owner: CapabilityDomain,
+                        risk: RiskClass,
+                        idempotency: Idempotency,
+                        offline: OfflinePolicy,
+                        summary: &str| {
+        registry
+            .register(CapabilityDescriptor {
+                id: id.to_string(),
+                owner,
+                contract_version: ContractVersion::new(1, 0, 0),
+                required_scope: ScopeRequirement::none(),
+                risk_class: risk,
+                idempotency,
+                offline_behavior: offline,
+                approval_hint: if risk == RiskClass::High {
+                    ApprovalHint::Required
+                } else {
+                    ApprovalHint::None
+                },
+                summary: summary.to_string(),
+            })
+            .expect("static capability catalog is valid");
+    };
+    register(
+        "work_management.task.create",
+        CapabilityDomain::WorkManagement,
+        RiskClass::Low,
+        Idempotency::Idempotent,
+        OfflinePolicy::LocalOnly,
+        "create a task in Work Management",
+    );
+    register(
+        "work_management.task.update",
+        CapabilityDomain::WorkManagement,
+        RiskClass::Low,
+        Idempotency::Idempotent,
+        OfflinePolicy::LocalOnly,
+        "update task details or status",
+    );
+    register(
+        "work_management.task.delete",
+        CapabilityDomain::WorkManagement,
+        RiskClass::Medium,
+        Idempotency::Idempotent,
+        OfflinePolicy::LocalOnly,
+        "delete a task",
+    );
+    register(
+        "learning.item.create",
+        CapabilityDomain::LearningGrowth,
+        RiskClass::Low,
+        Idempotency::Idempotent,
+        OfflinePolicy::LocalOnly,
+        "create a learning item",
+    );
+    register(
+        "knowledge.ref.create",
+        CapabilityDomain::KnowledgeContext,
+        RiskClass::Low,
+        Idempotency::Idempotent,
+        OfflinePolicy::LocalOnly,
+        "create a knowledge reference",
+    );
+    register(
+        "knowledge.ref.update",
+        CapabilityDomain::KnowledgeContext,
+        RiskClass::Low,
+        Idempotency::Idempotent,
+        OfflinePolicy::LocalOnly,
+        "update knowledge reference metadata",
+    );
+    register(
+        "data.export",
+        CapabilityDomain::SystemSecurity,
+        RiskClass::Medium,
+        Idempotency::Idempotent,
+        OfflinePolicy::LocalOnly,
+        "export workspace data",
+    );
+    register(
+        "data.purge",
+        CapabilityDomain::SystemSecurity,
+        RiskClass::High,
+        Idempotency::NonIdempotent,
+        OfflinePolicy::LocalOnly,
+        "purge expired data (destructive)",
+    );
+    registry
+}
 
 /// Work Management command surface constructed once at startup over the
 /// authoritative local database (ADR-006: one `app.sqlite`). It owns the
@@ -53,7 +159,23 @@ pub struct WorkManagementApi {
     /// Coordination connection for the durable-operations services (E3):
     /// operations, outbox and retention operate on raw rusqlite connections.
     coordination: rusqlite::Connection,
-    authorizer: LocalSingleUserAuthorizer,
+    /// AI Collaboration governance stores (E5): registrations, executions,
+    /// approvals and agent grants behind the governed authorizer.
+    agent_registrations: SqliteAgentRegistrationRepository,
+    agent_executions: SqliteAgentExecutionRepository,
+    approvals: SqliteApprovalRepository,
+    agent_grants: SqliteAgentGrantRepository,
+    /// The mediated adapter for the fake transport (E5 conformance surface;
+    /// real transports wait for ADR-022).
+    fake_adapter: paw_infrastructure::agent_adapter::FakeAgentAdapter,
+    /// Metadata-only capability registry, statically built at startup
+    /// (ADR-026; no dynamic loading).
+    registry: paw_application::ports::capability::CapabilityRegistry,
+    /// The governed authorizer: local policy for the human subject, fresh
+    /// grant evaluation for agent subjects (E5-02).
+    authorizer: GovernedAuthorizer<SqliteAgentGrantRepository>,
+    /// Durable envelope port for the invocation pipeline.
+    operations_service: paw_infrastructure::operations::SqliteOperationService,
     audit: SqliteAuditSink,
 }
 
@@ -104,7 +226,19 @@ impl WorkManagementApi {
                 }
             })?,
             coordination: paw_infrastructure::sqlite::open(db_path)?,
-            authorizer: LocalSingleUserAuthorizer,
+            agent_registrations: SqliteAgentRegistrationRepository::open(db_path)?,
+            agent_executions: SqliteAgentExecutionRepository::open(db_path)?,
+            approvals: SqliteApprovalRepository::open(db_path)?,
+            agent_grants: SqliteAgentGrantRepository::open(db_path)?,
+            fake_adapter: paw_infrastructure::agent_adapter::FakeAgentAdapter::new(),
+            registry: build_capability_registry(),
+            authorizer: {
+                let grants = SqliteAgentGrantRepository::open(db_path)?;
+                GovernedAuthorizer::new(grants)
+            },
+            operations_service: paw_infrastructure::operations::SqliteOperationService::new(
+                paw_infrastructure::sqlite::open(db_path)?,
+            ),
             audit: SqliteAuditSink::open(db_path)?,
         })
     }
@@ -1462,7 +1596,7 @@ fn map_classification_error(
 /// on the coordination services instead of through application use cases.
 #[allow(clippy::too_many_arguments)]
 fn check_gate(
-    authorizer: &LocalSingleUserAuthorizer,
+    authorizer: &impl paw_application::ports::authorization::Authorizer,
     audit: &SqliteAuditSink,
     ctx: &ExecutionContext,
     action: &paw_application::ports::authorization::ProtectedAction,

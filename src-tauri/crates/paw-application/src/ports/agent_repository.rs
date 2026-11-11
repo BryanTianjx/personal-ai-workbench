@@ -108,4 +108,11 @@ pub trait ApprovalRepository {
         now_ms: i64,
     ) -> Result<Vec<Approval>, AgentStoreError>;
     fn update_approval(&self, approval: &Approval) -> Result<(), AgentStoreError>;
+    /// Open approval for an exact canonical plan digest (the propose-time
+    /// record the owner decides on). `None` when no active approval exists.
+    fn find_active_by_digest(
+        &self,
+        workspace_id: &WorkspaceId,
+        canonical_digest: &str,
+    ) -> Result<Option<Approval>, AgentStoreError>;
 }

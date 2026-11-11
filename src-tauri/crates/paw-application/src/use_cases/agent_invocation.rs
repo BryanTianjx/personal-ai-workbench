@@ -271,6 +271,7 @@ where
     pub fn propose(
         &self,
         proposal: &AgentProposal,
+        proposer_actor: &str,
         now_ms: i64,
     ) -> Result<ProposalOutcome, AgentInvocationError> {
         // Parse/validate + resolve agent and workspace (steps 1–2).
@@ -368,6 +369,33 @@ where
                 .transition(ExecutionStatus::AwaitingApproval)
                 .map_err(AgentInvocationError::Governance)?;
             self.executions.update_execution(&execution)?;
+            let expires_at_ms = now_ms + proposal.approval_ttl_ms;
+            // The approval record is created at propose time: the binding
+            // is reconstructed from the persisted execution (never caller
+            // input), the human actor is the proposer, and the displayed
+            // expiry/attempt policy are exactly the persisted ones. The
+            // owner then decides; consumption happens at the side effect.
+            let binding = ApprovalBinding {
+                canonical_digest: execution.plan_digest.clone(),
+                actor_id: proposer_actor.to_string(),
+                agent_registration_id: Some(execution.registration_id.clone()),
+                workspace_id: execution.workspace_id.clone(),
+                capability_id: execution.capability_id.clone(),
+                capability_contract_version: execution.capability_contract_version.clone(),
+                tool_adapter: execution.tool_adapter.clone(),
+                target_identity: execution.target_identity.clone(),
+                material_params_digest: execution.material_params_digest.clone(),
+            };
+            let approval = Approval::new(
+                ApprovalId::new_v7(),
+                binding,
+                vec![execution.capability_id.clone()],
+                risk_class_str(descriptor.risk_class),
+                expires_at_ms,
+                proposal.attempt_policy,
+            )
+            .map_err(AgentInvocationError::Governance)?;
+            self.approvals.insert_approval(&approval)?;
             let display = ApprovalDisplay {
                 execution_id: execution.id.as_str().to_string(),
                 capability_id: execution.capability_id.clone(),
@@ -376,7 +404,7 @@ where
                 target_identity: execution.target_identity.clone(),
                 side_effect_set: vec![proposal.capability_id.clone()],
                 risk_class: risk_class_str(descriptor.risk_class).to_string(),
-                expires_at_ms: now_ms + proposal.approval_ttl_ms,
+                expires_at_ms,
                 attempt_policy: proposal.attempt_policy,
             };
             return Ok(ProposalOutcome::AwaitingApproval { execution, display });
@@ -387,7 +415,7 @@ where
             .transition(ExecutionStatus::Approved)
             .map_err(AgentInvocationError::Governance)?;
         self.executions.update_execution(&execution)?;
-        let outcome = self.run(&execution, proposal, None, now_ms)?;
+        let outcome = self.run(&execution, &proposal.correlation_id.clone(), None, now_ms)?;
         Ok(match outcome {
             RunOutcome::Completed {
                 execution,
@@ -418,19 +446,19 @@ where
         })
     }
 
-    /// Step 7: validate the approval binding reconstructed **from the
-    /// persisted execution** and decide. Approve records the approval and
-    /// runs; deny cancels. The binding is never taken from caller input, so
-    /// the displayed plan, the decided plan and the executed plan are the
-    /// same object (ADR-029 §4.3).
+    /// Step 7: the human decision on the approval created at propose time
+    /// (found by the execution's canonical digest, never re-created from
+    /// caller input). Approve consumes nothing yet — consumption happens at
+    /// the side effect — and runs; deny revokes the approval and cancels.
+    /// The binding is never taken from caller input, so the displayed plan,
+    /// the decided plan and the executed plan are the same object
+    /// (ADR-029 §4.3).
     pub fn decide_approval(
         &self,
         workspace_id: &WorkspaceId,
         execution_id: &AgentExecutionId,
-        approver: &ExecutionContext,
         decision: ApprovalDecision,
         now_ms: i64,
-        proposal: &AgentProposal,
     ) -> Result<Option<RunOutcome>, AgentInvocationError> {
         let mut execution = self.executions.get_execution(execution_id, workspace_id)?;
         if execution.status != ExecutionStatus::AwaitingApproval {
@@ -439,8 +467,16 @@ where
                 actual: execution.status.as_str().to_string(),
             });
         }
+        // The propose-time approval for this exact plan (active only).
+        let approval = self
+            .approvals
+            .find_active_by_digest(workspace_id, &execution.plan_digest)?
+            .ok_or(AgentInvocationError::ApprovalNotActive)?;
         match decision {
             ApprovalDecision::Deny => {
+                let mut revoked = approval.clone();
+                revoked.revoke().map_err(AgentInvocationError::Governance)?;
+                self.approvals.update_approval(&revoked)?;
                 execution
                     .transition(ExecutionStatus::Cancelled)
                     .map_err(AgentInvocationError::Governance)?;
@@ -448,37 +484,16 @@ where
                 Ok(None)
             }
             ApprovalDecision::Approve => {
-                // Reconstruct the binding from persisted fields only.
-                let binding = ApprovalBinding {
-                    canonical_digest: execution.plan_digest.clone(),
-                    actor_id: approver.actor_id.clone(),
-                    agent_registration_id: Some(execution.registration_id.clone()),
-                    workspace_id: execution.workspace_id.clone(),
-                    capability_id: execution.capability_id.clone(),
-                    capability_contract_version: execution.capability_contract_version.clone(),
-                    tool_adapter: execution.tool_adapter.clone(),
-                    target_identity: execution.target_identity.clone(),
-                    material_params_digest: execution.material_params_digest.clone(),
-                };
-                let approval = Approval::new(
-                    ApprovalId::new_v7(),
-                    binding,
-                    vec![execution.capability_id.clone()],
-                    // Risk class string mirrors the descriptor at propose
-                    // time; the display carries it to the decision surface.
-                    "High",
-                    now_ms + proposal.approval_ttl_ms,
-                    proposal.attempt_policy,
-                )
-                .map_err(AgentInvocationError::Governance)?;
-                self.approvals.insert_approval(&approval)?;
+                // Fresh correlation: the decision is a new interaction whose
+                // causation is the parked execution.
+                let correlation_id = uuid::Uuid::now_v7().to_string();
                 execution
                     .transition(ExecutionStatus::Approved)
                     .map_err(AgentInvocationError::Governance)?;
                 self.executions.update_execution(&execution)?;
                 Ok(Some(self.run(
                     &execution,
-                    proposal,
+                    &correlation_id,
                     Some(&approval.id),
                     now_ms,
                 )?))
@@ -492,7 +507,7 @@ where
     fn run(
         &self,
         execution: &AgentExecution,
-        proposal: &AgentProposal,
+        correlation_id: &str,
         approval_id: Option<&ApprovalId>,
         now_ms: i64,
     ) -> Result<RunOutcome, AgentInvocationError> {
@@ -500,7 +515,7 @@ where
         // ai_collaboration / agent_execution / execution id.
         let agent_ctx = ExecutionContext {
             actor_id: agent_subject(&execution.registration_id),
-            correlation_id: proposal.correlation_id.clone(),
+            correlation_id: correlation_id.to_string(),
         };
         let operation = self.operations.open(&OpenOperation {
             kind: "agent.invocation".to_string(),
@@ -509,7 +524,7 @@ where
             owner_id: execution.id.as_str().to_string(),
             workspace_id: Some(execution.workspace_id.as_str().to_string()),
             actor_id: agent_ctx.actor_id.clone(),
-            correlation_id: proposal.correlation_id.clone(),
+            correlation_id: correlation_id.to_string(),
             causation_id: None,
         })?;
 
@@ -589,7 +604,7 @@ where
         let request = crate::ports::agent_adapter::AdapterSubmitRequest {
             execution_id: execution.id.as_str().to_string(),
             plan_digest: execution.plan_digest.clone(),
-            correlation_id: proposal.correlation_id.clone(),
+            correlation_id: correlation_id.to_string(),
             capability_id: execution.capability_id.clone(),
             parameters,
         };

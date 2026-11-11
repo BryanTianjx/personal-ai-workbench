@@ -315,6 +315,21 @@ impl ApprovalRepository for MemApprovals {
         *found = approval.clone();
         Ok(())
     }
+
+    fn find_active_by_digest(
+        &self,
+        workspace_id: &WorkspaceId,
+        canonical_digest: &str,
+    ) -> Result<Option<Approval>, AgentStoreError> {
+        match self.rows.borrow().iter().find(|a| {
+            a.workspace_id == *workspace_id
+                && a.canonical_digest == canonical_digest
+                && a.effective_status(NOW) == paw_domain::ai_collaboration::ApprovalStatus::Active
+        }) {
+            Some(found) => Ok(Some(found.clone())),
+            None => Ok(None),
+        }
+    }
 }
 
 /// Scripted adapter: queued submit outcomes and queued result statuses.
@@ -561,7 +576,7 @@ fn low_risk_granted_invocation_runs_to_completion() {
     let authorizer = StubAuthorizer::allow_next(3); // pre-submit + pre-poll rechecks
     let outcome = harness
         .coordinator(&adapter, &authorizer)
-        .propose(&harness.proposal("work.task.create"), NOW)
+        .propose(&harness.proposal("work.task.create"), "local-user", NOW)
         .expect("completed");
     match outcome {
         ProposalOutcome::Completed {
@@ -587,9 +602,11 @@ fn default_deny_blocks_before_any_state_is_created() {
     let harness = Harness::new(&["work.task.create"]);
     let adapter = ScriptedAdapter::scripted(vec![], vec![]);
     let authorizer = StubAuthorizer::allow_next(0);
-    let outcome = harness
-        .coordinator(&adapter, &authorizer)
-        .propose(&harness.proposal("work.task.create"), NOW);
+    let outcome = harness.coordinator(&adapter, &authorizer).propose(
+        &harness.proposal("work.task.create"),
+        "local-user",
+        NOW,
+    );
     assert!(matches!(outcome, Err(AgentInvocationError::Denied)));
     assert!(harness.exs.rows.borrow().is_empty());
     assert!(harness.ops.envelopes.borrow().is_empty());
@@ -600,9 +617,11 @@ fn unknown_capability_fails_closed() {
     let harness = Harness::new(&["work.task.create"]);
     let adapter = ScriptedAdapter::scripted(vec![], vec![]);
     let authorizer = StubAuthorizer::allow_next(2);
-    let outcome = harness
-        .coordinator(&adapter, &authorizer)
-        .propose(&harness.proposal("no.such.capability"), NOW);
+    let outcome = harness.coordinator(&adapter, &authorizer).propose(
+        &harness.proposal("no.such.capability"),
+        "local-user",
+        NOW,
+    );
     assert!(matches!(
         outcome,
         Err(AgentInvocationError::CapabilityUnsupported)
@@ -619,7 +638,7 @@ fn high_risk_requires_human_approval_two_phase() {
     // Phase 1: parked for approval, nothing executed.
     let execution_id = match harness
         .coordinator(&propose_adapter, &propose_authorizer)
-        .propose(&harness.proposal("work.shell.run"), NOW)
+        .propose(&harness.proposal("work.shell.run"), "local-user", NOW)
         .expect("awaiting approval")
     {
         ProposalOutcome::AwaitingApproval { execution, display } => {
@@ -630,10 +649,9 @@ fn high_risk_requires_human_approval_two_phase() {
         }
         other => panic!("expected awaiting approval, got {other:?}"),
     };
-    assert!(
-        harness.apps.rows.borrow().is_empty(),
-        "no approval row before the decision"
-    );
+    // The propose-time approval record exists (binding reconstructed from
+    // the persisted execution); the decision only consumes or revokes it.
+    assert_eq!(harness.apps.rows.borrow().len(), 1);
     assert!(harness.ops.envelopes.borrow().is_empty());
 
     // Phase 2: the owner approves; the binding is reconstructed from the
@@ -650,10 +668,8 @@ fn high_risk_requires_human_approval_two_phase() {
         .decide_approval(
             &harness.workspace,
             &execution_id,
-            &ctx("local-user"),
             ApprovalDecision::Approve,
             NOW,
-            &harness.proposal("work.shell.run"),
         )
         .expect("approved and run")
         .expect("run outcome");
@@ -687,7 +703,7 @@ fn denied_approval_cancels_without_side_effect() {
     let authorizer = StubAuthorizer::allow_next(2);
     let execution_id = match harness
         .coordinator(&adapter, &authorizer)
-        .propose(&harness.proposal("work.shell.run"), NOW)
+        .propose(&harness.proposal("work.shell.run"), "local-user", NOW)
         .expect("awaiting approval")
     {
         ProposalOutcome::AwaitingApproval { execution, .. } => execution.id,
@@ -700,10 +716,8 @@ fn denied_approval_cancels_without_side_effect() {
         .decide_approval(
             &harness.workspace,
             &execution_id,
-            &ctx("local-user"),
             ApprovalDecision::Deny,
             NOW,
-            &harness.proposal("work.shell.run"),
         )
         .expect("decision recorded");
     assert!(outcome.is_none(), "deny runs nothing");
@@ -723,7 +737,7 @@ fn revocation_between_side_effects_blocks_the_next_effect() {
     let authorizer = StubAuthorizer::allow_next(1); // propose ok; recheck denied
     let outcome = harness
         .coordinator(&adapter, &authorizer)
-        .propose(&harness.proposal("work.task.create"), NOW)
+        .propose(&harness.proposal("work.task.create"), "local-user", NOW)
         .expect("propose completes with a failed run");
     match outcome {
         ProposalOutcome::Completed {
@@ -753,7 +767,7 @@ fn indeterminate_submit_holds_unresolved_and_reconcile_resolves() {
     let authorizer = StubAuthorizer::allow_next(2);
     let outcome = harness
         .coordinator(&adapter, &authorizer)
-        .propose(&harness.proposal("work.task.create"), NOW)
+        .propose(&harness.proposal("work.task.create"), "local-user", NOW)
         .expect("propose completes with unresolved run");
     match outcome {
         ProposalOutcome::Completed {
@@ -801,7 +815,7 @@ fn timed_out_provider_result_becomes_reconcilable_not_inferred() {
     let authorizer = StubAuthorizer::allow_next(3);
     let outcome = harness
         .coordinator(&adapter, &authorizer)
-        .propose(&harness.proposal("work.task.create"), NOW)
+        .propose(&harness.proposal("work.task.create"), "local-user", NOW)
         .expect("run with timeout");
     match outcome {
         ProposalOutcome::Completed {
@@ -829,9 +843,11 @@ fn suspended_registration_blocks_proposal() {
 
     let adapter = ScriptedAdapter::scripted(vec![], vec![]);
     let authorizer = StubAuthorizer::allow_next(2);
-    let outcome = harness
-        .coordinator(&adapter, &authorizer)
-        .propose(&harness.proposal("work.task.create"), NOW);
+    let outcome = harness.coordinator(&adapter, &authorizer).propose(
+        &harness.proposal("work.task.create"),
+        "local-user",
+        NOW,
+    );
     assert!(matches!(
         outcome,
         Err(AgentInvocationError::RegistrationNotActive { .. })
