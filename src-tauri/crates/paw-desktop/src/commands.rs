@@ -19,12 +19,14 @@ use paw_application::ports::agent_repository::AgentStoreError;
 use paw_application::ports::audit::AuditSink as _;
 use paw_application::ports::authorization::ExecutionContext;
 use paw_application::ports::workspace_repository::WorkspaceRepositoryError;
+use paw_application::use_cases::knowledge as knowledge_use_cases;
+use paw_application::use_cases::learning;
 use paw_application::use_cases::work_management::{self as use_cases, WorkManagementError};
 use paw_application::{
     AgentExecution, AgentRegistration, Approval, Area, AreaId, Availability, Goal, GoalId, Item,
     ItemId, ItemKind, ItemStatus, KnowledgeRefId, KnowledgeSource, Plan, PlanId, PlanStatus,
-    Project, ProjectId, ProjectStatus, Roadmap, RoadmapId, Session, SessionId, Task, TaskId,
-    TaskStatus, ValidationError, Workspace, WorkspaceId,
+    Project, ProjectId, ProjectStatus, Roadmap, RoadmapId, Session, Task, TaskId, TaskStatus,
+    ValidationError, Workspace, WorkspaceId,
 };
 use paw_infrastructure::repositories::agent_governance::{
     SqliteAgentExecutionRepository, SqliteAgentGrantRepository, SqliteAgentRegistrationRepository,
@@ -495,46 +497,15 @@ impl WorkManagementApi {
     }
 
     // -- Learning & Growth (E4, PAW-LG-001～006) ---------------------------------
-
-    /// Gate + audit helper for the E4 flows that run directly on the
-    /// adapters: authorization check (denial audited, `denied` surfaced),
-    /// then an Allowed audit row for the gated action. Post-gate constraint
-    /// failures surface as typed command errors.
-    fn gate_and_audit(
-        &self,
-        action: &paw_application::ports::authorization::ProtectedAction,
-        workspace_id: &WorkspaceId,
-        resource_type: &'static str,
-        resource_id: Option<&str>,
-    ) -> Result<(), CommandError> {
-        let ctx = self.context();
-        check_gate(
-            &self.authorizer,
-            &self.audit,
-            &ctx,
-            action,
-            Some(workspace_id),
-            resource_type,
-            resource_id,
-        )?;
-        self.audit
-            .record(&paw_application::ports::audit::AuditEvent {
-                workspace_id: Some(workspace_id.clone()),
-                actor_id: ctx.actor_id.clone(),
-                action: action.action_key(),
-                resource_type,
-                resource_id: resource_id.map(str::to_string),
-                outcome: paw_application::ports::audit::AuditOutcome::Allowed,
-                correlation_id: ctx.correlation_id.clone(),
-            });
-        Ok(())
-    }
+    //
+    // Boundary adapter only: each method mints the execution context and
+    // delegates to the Learning use cases (ADR-017 — coordination lives in
+    // paw-application). Authorization gates, audit rows and domain rules are
+    // the use case layer's responsibility; typed failures are mapped to the
+    // stable command error codes below.
 
     pub fn list_roadmaps(&self, workspace_id: &WorkspaceId) -> Result<Vec<Roadmap>, CommandError> {
-        use paw_application::ports::learning_repository::RoadmapRepository;
-        self.roadmaps
-            .list_roadmaps(workspace_id)
-            .map_err(CommandError::from_learning)
+        learning::roadmap::list_roadmaps(&self.roadmaps, workspace_id).map_err(CommandError::from)
     }
 
     pub fn create_roadmap(
@@ -543,22 +514,17 @@ impl WorkManagementApi {
         name: &str,
         description: Option<&str>,
     ) -> Result<Roadmap, CommandError> {
-        let roadmap = Roadmap::new(RoadmapId::new_v7(), workspace_id.clone(), name, description)
-            .map_err(WorkManagementError::from)
-            .map_err(CommandError::from)?;
-        self.gate_and_audit(
-            &paw_application::ports::authorization::ProtectedAction::CreateLearningRoadmap {
-                workspace_id: workspace_id.clone(),
-            },
+        let ctx = self.context();
+        learning::roadmap::create_roadmap(
+            &self.roadmaps,
+            &self.authorizer,
+            &self.audit,
+            &ctx,
             workspace_id,
-            "learning_roadmap",
-            Some(roadmap.id.as_str()),
-        )?;
-        use paw_application::ports::learning_repository::RoadmapRepository;
-        self.roadmaps
-            .insert_roadmap(&roadmap)
-            .map_err(CommandError::from_learning)?;
-        Ok(roadmap)
+            name,
+            description,
+        )
+        .map_err(CommandError::from)
     }
 
     pub fn delete_roadmap(
@@ -566,18 +532,16 @@ impl WorkManagementApi {
         workspace_id: &WorkspaceId,
         roadmap_id: &RoadmapId,
     ) -> Result<(), CommandError> {
-        self.gate_and_audit(
-            &paw_application::ports::authorization::ProtectedAction::DeleteLearningRoadmap {
-                workspace_id: workspace_id.clone(),
-            },
+        let ctx = self.context();
+        learning::roadmap::delete_roadmap(
+            &self.roadmaps,
+            &self.authorizer,
+            &self.audit,
+            &ctx,
             workspace_id,
-            "learning_roadmap",
-            Some(roadmap_id.as_str()),
-        )?;
-        use paw_application::ports::learning_repository::RoadmapRepository;
-        self.roadmaps
-            .delete_roadmap(workspace_id, roadmap_id)
-            .map_err(CommandError::from_learning)
+            roadmap_id,
+        )
+        .map_err(CommandError::from)
     }
 
     pub fn list_plans(
@@ -585,10 +549,8 @@ impl WorkManagementApi {
         workspace_id: &WorkspaceId,
         roadmap_id: Option<&RoadmapId>,
     ) -> Result<Vec<Plan>, CommandError> {
-        use paw_application::ports::learning_repository::PlanRepository;
-        self.plans
-            .list_plans(workspace_id, roadmap_id)
-            .map_err(CommandError::from_learning)
+        learning::plan::list_plans(&self.plans, workspace_id, roadmap_id)
+            .map_err(CommandError::from)
     }
 
     pub fn create_plan(
@@ -598,28 +560,18 @@ impl WorkManagementApi {
         name: &str,
         description: Option<&str>,
     ) -> Result<Plan, CommandError> {
-        let plan = Plan::new(
-            PlanId::new_v7(),
-            workspace_id.clone(),
-            roadmap_id.clone(),
+        let ctx = self.context();
+        learning::plan::create_plan(
+            &self.plans,
+            &self.authorizer,
+            &self.audit,
+            &ctx,
+            workspace_id,
+            roadmap_id,
             name,
             description,
         )
-        .map_err(WorkManagementError::from)
-        .map_err(CommandError::from)?;
-        self.gate_and_audit(
-            &paw_application::ports::authorization::ProtectedAction::CreateLearningPlan {
-                workspace_id: workspace_id.clone(),
-            },
-            workspace_id,
-            "learning_plan",
-            Some(plan.id.as_str()),
-        )?;
-        use paw_application::ports::learning_repository::PlanRepository;
-        self.plans
-            .insert_plan(&plan)
-            .map_err(CommandError::from_learning)?;
-        Ok(plan)
+        .map_err(CommandError::from)
     }
 
     pub fn update_plan_status(
@@ -628,25 +580,17 @@ impl WorkManagementApi {
         plan_id: &PlanId,
         status: PlanStatus,
     ) -> Result<Plan, CommandError> {
-        use paw_application::ports::learning_repository::PlanRepository;
-        let mut plan = self
-            .plans
-            .find_plan(workspace_id, plan_id)
-            .map_err(CommandError::from_learning)?
-            .ok_or(CommandError::LearningRecordNotFound)?;
-        plan.status = status;
-        self.gate_and_audit(
-            &paw_application::ports::authorization::ProtectedAction::UpdateLearningPlan {
-                workspace_id: workspace_id.clone(),
-            },
+        let ctx = self.context();
+        learning::plan::update_plan_status(
+            &self.plans,
+            &self.authorizer,
+            &self.audit,
+            &ctx,
             workspace_id,
-            "learning_plan",
-            Some(plan.id.as_str()),
-        )?;
-        self.plans
-            .update_plan(&plan)
-            .map_err(CommandError::from_learning)?;
-        Ok(plan)
+            plan_id,
+            status,
+        )
+        .map_err(CommandError::from)
     }
 
     pub fn list_items(
@@ -654,10 +598,7 @@ impl WorkManagementApi {
         workspace_id: &WorkspaceId,
         plan_id: Option<&PlanId>,
     ) -> Result<Vec<Item>, CommandError> {
-        use paw_application::ports::learning_repository::ItemRepository;
-        self.items
-            .list_items(workspace_id, plan_id, None)
-            .map_err(CommandError::from_learning)
+        learning::item::list_items(&self.items, workspace_id, plan_id).map_err(CommandError::from)
     }
 
     pub fn create_item(
@@ -669,31 +610,20 @@ impl WorkManagementApi {
         expected_outcome: Option<&str>,
         acceptance_criteria: Option<&str>,
     ) -> Result<Item, CommandError> {
-        let item = Item::new(
-            ItemId::new_v7(),
-            workspace_id.clone(),
-            plan_id.clone(),
+        let ctx = self.context();
+        learning::item::create_item(
+            &self.items,
+            &self.authorizer,
+            &self.audit,
+            &ctx,
+            workspace_id,
+            plan_id,
             kind,
             title,
             expected_outcome,
             acceptance_criteria,
-            None,
         )
-        .map_err(WorkManagementError::from)
-        .map_err(CommandError::from)?;
-        self.gate_and_audit(
-            &paw_application::ports::authorization::ProtectedAction::CreateLearningItem {
-                workspace_id: workspace_id.clone(),
-            },
-            workspace_id,
-            "learning_item",
-            Some(item.id.as_str()),
-        )?;
-        use paw_application::ports::learning_repository::ItemRepository;
-        self.items
-            .insert_item(&item)
-            .map_err(CommandError::from_learning)?;
-        Ok(item)
+        .map_err(CommandError::from)
     }
 
     pub fn transition_item(
@@ -702,28 +632,17 @@ impl WorkManagementApi {
         item_id: &ItemId,
         to: ItemStatus,
     ) -> Result<Item, CommandError> {
-        use paw_application::ports::learning_repository::ItemRepository;
-        let mut item = self
-            .items
-            .find_item(workspace_id, item_id)
-            .map_err(CommandError::from_learning)?
-            .ok_or(CommandError::LearningRecordNotFound)?;
-        if !item.status.can_transition_to(to) {
-            return Err(CommandError::TaskStatusInvalid);
-        }
-        item.status = to;
-        self.gate_and_audit(
-            &paw_application::ports::authorization::ProtectedAction::UpdateLearningItem {
-                workspace_id: workspace_id.clone(),
-            },
+        let ctx = self.context();
+        learning::item::transition_item(
+            &self.items,
+            &self.authorizer,
+            &self.audit,
+            &ctx,
             workspace_id,
-            "learning_item",
-            Some(item.id.as_str()),
-        )?;
-        self.items
-            .update_item(&item)
-            .map_err(CommandError::from_learning)?;
-        Ok(item)
+            item_id,
+            to,
+        )
+        .map_err(CommandError::from)
     }
 
     pub fn link_item_to_project(
@@ -732,53 +651,42 @@ impl WorkManagementApi {
         item_id: &ItemId,
         project_id: &ProjectId,
     ) -> Result<(), CommandError> {
-        self.gate_and_audit(
-            &paw_application::ports::authorization::ProtectedAction::LinkLearningItemProject {
-                workspace_id: workspace_id.clone(),
-            },
+        let ctx = self.context();
+        learning::item::link_item_to_project(
+            &self.items,
+            &self.authorizer,
+            &self.audit,
+            &ctx,
             workspace_id,
-            "learning_item",
-            Some(item_id.as_str()),
-        )?;
-        use paw_application::ports::learning_repository::ItemRepository;
-        self.items
-            .attach_item_to_project(workspace_id, item_id, project_id)
-            .map_err(CommandError::from_learning)
+            item_id,
+            project_id,
+        )
+        .map_err(CommandError::from)
     }
 
     /// PAW-LG-006 (CreateTaskForLearningItem semantics): create a Work
-    /// Management task for a learning item — the task remains Work
-    /// Management-owned; the action-step link is recorded. The first linked
-    /// project (if any) becomes the task's project.
+    /// Management task for a learning item and record the action-step link.
+    /// The orchestration lives in `learning::item` (ADR-017): the task is
+    /// still created by the Work Management use case and stays
+    /// Work-Management-owned.
     pub fn create_task_for_item(
         &self,
         workspace_id: &WorkspaceId,
         item_id: &ItemId,
         title: &str,
     ) -> Result<Task, CommandError> {
-        use paw_application::ports::learning_repository::ItemRepository;
-        let item = self
-            .items
-            .find_item(workspace_id, item_id)
-            .map_err(CommandError::from_learning)?
-            .ok_or(CommandError::LearningRecordNotFound)?;
-        let projects = self
-            .items
-            .list_projects_for_item(workspace_id, item_id)
-            .map_err(CommandError::from_learning)?;
-        let task = self.create_task(workspace_id, projects.first().cloned(), title, None)?;
-        self.gate_and_audit(
-            &paw_application::ports::authorization::ProtectedAction::CreateTaskForLearningItem {
-                workspace_id: workspace_id.clone(),
-            },
+        let ctx = self.context();
+        learning::item::request_task_for_item(
+            &self.items,
+            &self.tasks,
+            &self.authorizer,
+            &self.audit,
+            &ctx,
             workspace_id,
-            "learning_item",
-            Some(item.id.as_str()),
-        )?;
-        self.items
-            .attach_task_to_item(workspace_id, item_id, &task.id)
-            .map_err(CommandError::from_learning)?;
-        Ok(task)
+            item_id,
+            title,
+        )
+        .map_err(CommandError::from)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -793,35 +701,27 @@ impl WorkManagementApi {
         takeaway: Option<&str>,
         next_step: Option<&str>,
     ) -> Result<Session, CommandError> {
-        let session = Session::new(
-            SessionId::new_v7(),
-            workspace_id.clone(),
-            item_id.clone(),
-            None,
-            None,
+        // Clock reading stays at the boundary: the use case takes the
+        // occurrence timestamp as data and never reads infrastructure time.
+        let occurred_at =
+            paw_infrastructure::sqlite::now_ms().map_err(|_| CommandError::Unexpected)?;
+        let ctx = self.context();
+        learning::session::append_session(
+            &self.sessions,
+            &self.authorizer,
+            &self.audit,
+            &ctx,
+            workspace_id,
+            item_id,
             method,
             duration_minutes,
             summary,
             difficulty,
             takeaway,
             next_step,
-            paw_infrastructure::sqlite::now_ms().map_err(|_| CommandError::Unexpected)?,
+            occurred_at,
         )
-        .map_err(WorkManagementError::from)
-        .map_err(CommandError::from)?;
-        self.gate_and_audit(
-            &paw_application::ports::authorization::ProtectedAction::AppendLearningSession {
-                workspace_id: workspace_id.clone(),
-            },
-            workspace_id,
-            "learning_session",
-            Some(session.id.as_str()),
-        )?;
-        use paw_application::ports::learning_repository::SessionRepository;
-        self.sessions
-            .append_session(&session)
-            .map_err(CommandError::from_learning)?;
-        Ok(session)
+        .map_err(CommandError::from)
     }
 
     pub fn list_sessions(
@@ -829,10 +729,8 @@ impl WorkManagementApi {
         workspace_id: &WorkspaceId,
         item_id: Option<&ItemId>,
     ) -> Result<Vec<Session>, CommandError> {
-        use paw_application::ports::learning_repository::SessionRepository;
-        self.sessions
-            .list_sessions(workspace_id, item_id)
-            .map_err(CommandError::from_learning)
+        learning::session::list_sessions(&self.sessions, workspace_id, item_id)
+            .map_err(CommandError::from)
     }
 
     // -- Knowledge & Context (E4, PAW-K-001) -------------------------------------
@@ -842,10 +740,8 @@ impl WorkManagementApi {
         workspace_id: &WorkspaceId,
         availability: Option<Availability>,
     ) -> Result<Vec<paw_application::KnowledgeRef>, CommandError> {
-        use paw_application::ports::knowledge_repository::KnowledgeRefRepository;
-        self.knowledge
-            .list_knowledge_refs(workspace_id, availability)
-            .map_err(CommandError::from_knowledge)
+        knowledge_use_cases::list_knowledge_refs(&self.knowledge, workspace_id, availability)
+            .map_err(CommandError::from)
     }
 
     pub fn create_knowledge_ref(
@@ -857,31 +753,20 @@ impl WorkManagementApi {
         locator: Option<&str>,
         version_label: Option<&str>,
     ) -> Result<paw_application::KnowledgeRef, CommandError> {
-        let knowledge_ref = paw_application::KnowledgeRef::new(
-            KnowledgeRefId::new_v7(),
-            workspace_id.clone(),
+        let ctx = self.context();
+        knowledge_use_cases::create_knowledge_ref(
+            &self.knowledge,
+            &self.authorizer,
+            &self.audit,
+            &ctx,
+            workspace_id,
             title,
             source,
             external_uri,
             locator,
             version_label,
-            None,
         )
-        .map_err(WorkManagementError::from)
-        .map_err(CommandError::from)?;
-        self.gate_and_audit(
-            &paw_application::ports::authorization::ProtectedAction::CreateKnowledgeRef {
-                workspace_id: workspace_id.clone(),
-            },
-            workspace_id,
-            "knowledge_ref",
-            Some(knowledge_ref.id.as_str()),
-        )?;
-        use paw_application::ports::knowledge_repository::KnowledgeRefRepository;
-        self.knowledge
-            .insert_knowledge_ref(&knowledge_ref)
-            .map_err(CommandError::from_knowledge)?;
-        Ok(knowledge_ref)
+        .map_err(CommandError::from)
     }
 
     pub fn set_knowledge_availability(
@@ -890,18 +775,17 @@ impl WorkManagementApi {
         knowledge_ref_id: &KnowledgeRefId,
         availability: Availability,
     ) -> Result<paw_application::KnowledgeRef, CommandError> {
-        self.gate_and_audit(
-            &paw_application::ports::authorization::ProtectedAction::SetKnowledgeAvailability {
-                workspace_id: workspace_id.clone(),
-            },
+        let ctx = self.context();
+        knowledge_use_cases::set_knowledge_availability(
+            &self.knowledge,
+            &self.authorizer,
+            &self.audit,
+            &ctx,
             workspace_id,
-            "knowledge_ref",
-            Some(knowledge_ref_id.as_str()),
-        )?;
-        use paw_application::ports::knowledge_repository::KnowledgeRefRepository;
-        self.knowledge
-            .set_availability(workspace_id, knowledge_ref_id, availability)
-            .map_err(CommandError::from_knowledge)
+            knowledge_ref_id,
+            availability,
+        )
+        .map_err(CommandError::from)
     }
 
     pub fn delete_knowledge_ref(
@@ -909,18 +793,16 @@ impl WorkManagementApi {
         workspace_id: &WorkspaceId,
         knowledge_ref_id: &KnowledgeRefId,
     ) -> Result<(), CommandError> {
-        self.gate_and_audit(
-            &paw_application::ports::authorization::ProtectedAction::DeleteKnowledgeRef {
-                workspace_id: workspace_id.clone(),
-            },
+        let ctx = self.context();
+        knowledge_use_cases::delete_knowledge_ref(
+            &self.knowledge,
+            &self.authorizer,
+            &self.audit,
+            &ctx,
             workspace_id,
-            "knowledge_ref",
-            Some(knowledge_ref_id.as_str()),
-        )?;
-        use paw_application::ports::knowledge_repository::KnowledgeRefRepository;
-        self.knowledge
-            .delete_knowledge_ref(workspace_id, knowledge_ref_id)
-            .map_err(CommandError::from_knowledge)
+            knowledge_ref_id,
+        )
+        .map_err(CommandError::from)
     }
 
     // -- Operation queue (E3-04) ------------------------------------------------
@@ -1976,6 +1858,36 @@ impl From<WorkManagementError> for CommandError {
             // Invariant violations and repository-level invariant failures
             // stay generic on the boundary.
             _ => Self::Unexpected,
+        }
+    }
+}
+
+impl From<paw_application::use_cases::learning::LearningError> for CommandError {
+    fn from(err: paw_application::use_cases::learning::LearningError) -> Self {
+        use paw_application::use_cases::learning::LearningError as E;
+        match err {
+            // Typed not-found codes, opaque invariant failures.
+            E::Repository(e) => Self::from_learning(e),
+            // Domain validation keeps its existing boundary codes.
+            E::Validation(v) => Self::from(WorkManagementError::Validation(v)),
+            E::Authorization(_) => Self::Denied,
+            // The learning item machine mirrors the task machine; the
+            // published UI code stays `task_status_invalid`.
+            E::ItemTransition { .. } => Self::TaskStatusInvalid,
+            // Delegated Work Management failures (PAW-LG-006 task creation)
+            // map exactly as a direct Work Management error.
+            E::WorkManagement(e) => Self::from(e),
+        }
+    }
+}
+
+impl From<paw_application::use_cases::knowledge::KnowledgeError> for CommandError {
+    fn from(err: paw_application::use_cases::knowledge::KnowledgeError) -> Self {
+        use paw_application::use_cases::knowledge::KnowledgeError as E;
+        match err {
+            E::Knowledge(e) => Self::from_knowledge(e),
+            E::Validation(v) => Self::from(WorkManagementError::Validation(v)),
+            E::Authorization(_) => Self::Denied,
         }
     }
 }

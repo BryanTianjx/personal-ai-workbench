@@ -141,23 +141,6 @@ pub fn run() {
             commands::create_knowledge_ref,
             commands::set_knowledge_availability,
             commands::delete_knowledge_ref,
-            commands::list_roadmaps,
-            commands::create_roadmap,
-            commands::delete_roadmap,
-            commands::list_plans,
-            commands::create_plan,
-            commands::update_plan_status,
-            commands::list_items,
-            commands::create_item,
-            commands::transition_item,
-            commands::link_item_to_project,
-            commands::create_task_for_item,
-            commands::append_session,
-            commands::list_sessions,
-            commands::list_knowledge_refs,
-            commands::create_knowledge_ref,
-            commands::set_knowledge_availability,
-            commands::delete_knowledge_ref,
         ])
         .setup(|app| {
             let api = bootstrap_state(app)?;

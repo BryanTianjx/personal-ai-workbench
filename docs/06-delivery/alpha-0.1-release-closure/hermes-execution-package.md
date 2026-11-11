@@ -2,7 +2,7 @@
 
 - **Package ID:** PAW-REL-CLOSURE-ALPHA-0.1
 - **Baseline:** `main` at `f558c8c2bdee90b572f308324e5ea9ef29486001` (2026-11-11 audit snapshot)
-- **Audit baseline:** [Engineering Audit Baseline v1.0](../engineering-audit-baseline-v1.0.md)
+- **Audit baseline:** [Engineering Audit Baseline v1.0](../../04-quality/engineering-audit-baseline-v1.0.md)
 - **Execution mode:** staged; read-only first, then narrowly authorized implementation/fixes, then owner-run acceptance
 - **Release decision at package creation:** NOT RELEASE-READY
 - **Repository policy:** no automatic commit, push, merge, tag, publish or release
@@ -16,6 +16,7 @@ The goal is to produce reproducible evidence that the exact candidate build can 
 ## 2. Global Execution Contract
 
 Hermes MUST:
+
 1. Begin with a read-only repository and environment inspection. Record current branch, HEAD, working-tree status, remotes and toolchain before any change.
 2. Use the current main-derived work branch; never base work on stale `feat/e1-engineering`, `feat/e2-work-management` or `feat/e3-reliability` branches.
 3. Re-read the current versions of this package, the audit baseline, README, ADR-021/022 and E1/E2/E3 evidence reports before execution.
@@ -49,6 +50,7 @@ REL-00 and REL-01 are prerequisites. REL-02 through REL-06 may be prepared in pa
 **Priority:** P0 · **Mode:** Read-only · **No source modifications**
 
 Tasks:
+
 - Confirm repository, current main HEAD and clean/dirty status.
 - Confirm Rust, Cargo, Node, pnpm, Tauri CLI, WebView2 and Windows versions.
 - Inspect CI workflow definitions and latest checks for the target commit.
@@ -58,6 +60,7 @@ Tasks:
 - Produce a command/evidence inventory and unresolved questions.
 
 Acceptance:
+
 - Environment and commit recorded.
 - No files or user data modified.
 - All later package steps have exact reproducible commands and safe test locations.
@@ -67,6 +70,7 @@ Acceptance:
 **Priority:** P0 · **Mode:** Read-only, then documentation-only proposal
 
 Tasks:
+
 - Reconcile README milestone status against E1/E2/E3 reports and current source.
 - Confirm all deferred items and avoid marking test-level-only evidence as live acceptance.
 - Check ADR-021 Windows-only scope and ADR-022 Alpha 0.2 boundary.
@@ -74,6 +78,7 @@ Tasks:
 - Identify stale counts, branch references, commit references and contradictory status statements.
 
 Acceptance:
+
 - Traceability matrix has requirement/gate, source path, test name/command, evidence location, status and owner.
 - Contradictions are documented; no unsupported “complete” claim remains.
 - Any proposed documentation changes are presented for review before writing.
@@ -83,6 +88,7 @@ Acceptance:
 **Priority:** P0 · **Mode:** Test preparation + owner-operated manual test
 
 Test on a supported Windows environment using a disposable workspace and test data:
+
 1. Launch the app while online.
 2. Create/select a Workspace.
 3. Create and update Area, Goal, Project and Task; exercise allowed status transitions.
@@ -95,12 +101,14 @@ Test on a supported Windows environment using a disposable workspace and test da
 10. Reconnect and verify no duplicate/lost local records and no unintended queued side effects.
 
 Record:
+
 - Windows edition/build, app commit, toolchain, network isolation method.
 - Exact steps, expected/actual results, screenshots or logs where useful.
 - Database and attachment consistency checks on a copy.
 - Any feature intentionally requiring network and its explicit degraded-state UX.
 
 Acceptance:
+
 - All supported core local workflows pass offline.
 - No false success, data loss, cross-workspace leakage or unexpected remote dependency.
 - Any exception is explicitly scoped and owner-approved.
@@ -111,6 +119,7 @@ Acceptance:
 **Priority:** P1 · **Mode:** Controlled test on disposable copies only
 
 Tasks:
+
 - Inspect migration runner, transaction boundaries, checksum ledger and startup recovery behavior.
 - Determine safe fault-injection points from source; do not improvise against the real app database.
 - Create a disposable database fixture from the previous schema version with representative records and audit rows.
@@ -120,6 +129,7 @@ Tasks:
 - Verify no partial destructive migration or silent ledger rewrite.
 
 Acceptance:
+
 - Each tested failure point has expected behavior and captured evidence.
 - `PRAGMA integrity_check` and `PRAGMA foreign_key_check` pass after recovery where recovery is expected.
 - Failure is explicit and non-destructive where automatic recovery is not supported.
@@ -130,6 +140,7 @@ Acceptance:
 **Priority:** P1 · **Mode:** Controlled test on disposable copies
 
 Tasks:
+
 - Inspect backup format, metadata, restore replacement semantics and user-facing commands/UI.
 - Create a disposable test workspace with linked projects/tasks, audit rows and attachments.
 - Produce a backup through the supported application path.
@@ -140,6 +151,7 @@ Tasks:
 - Document whether attachment bytes are included, separately backed up or intentionally excluded; do not assume.
 
 Acceptance:
+
 - Successful restore reproduces all promised data.
 - Invalid backup leaves target untouched.
 - Integrity and foreign-key checks pass.
@@ -151,6 +163,7 @@ Acceptance:
 **Priority:** P1 · **Mode:** Implementation only if required, then manual verification
 
 Tasks:
+
 - Identify configured Tauri bundle targets, installer format, signing assumptions and release scripts.
 - Build from the exact candidate commit with pinned toolchain.
 - Verify artifact provenance, version metadata and checksums.
@@ -162,6 +175,7 @@ Tasks:
 - Test rollback/recovery strategy; do not claim installer rollback if only database restore is available.
 
 Acceptance:
+
 - Reproducible installer artifacts and checksums.
 - Clean install launches.
 - Upgrade preserves data and opens successfully.
@@ -174,6 +188,7 @@ Acceptance:
 **Priority:** P1 · **Mode:** Controlled test environment
 
 Tasks:
+
 - Create a controlled failing consumer / quarantined message scenario.
 - Verify retry limits, quarantine transition and audit evidence.
 - Re-drive the quarantined message and verify original event ID, incremented redrive count and operator attribution.
@@ -184,6 +199,7 @@ Tasks:
 - Verify retention boundaries without deleting current or unresolved records.
 
 Acceptance:
+
 - Runtime behavior matches ADR-019/020 and E3 policy.
 - All side effects are authorized and audited.
 - No unsafe duplicate execution or silent evidence deletion.
@@ -194,6 +210,7 @@ Acceptance:
 **Priority:** P0 · **Mode:** Read-only synthesis; owner decision required
 
 Tasks:
+
 - Re-run full verification on the exact candidate commit.
 - Capture CI run identifiers and statuses.
 - Summarize REL-02 through REL-06 evidence.
@@ -202,6 +219,7 @@ Tasks:
 - Produce a final blocker list and explicit release recommendation.
 
 Acceptance:
+
 - P0 gates all pass.
 - P1 items are closed or have explicit owner-approved risk acceptance.
 - Exact candidate commit and artifact hashes are recorded.
@@ -231,6 +249,7 @@ Never use “PASS” when the step was not run. Use “TEST-LEVEL VERIFIED” wh
 ## 6. Stop Conditions
 
 Stop and report immediately if:
+
 - The current branch is not the expected main-derived task branch or contains unexpected user changes.
 - A test might modify the real user database or attachment store.
 - Migration recovery could destroy or rewrite non-disposable data.
@@ -255,6 +274,7 @@ Create each report only when the corresponding work has actually been performed.
 ## 8. Suggested Hermes Task Board
 
 Create these cards with dependency links:
+
 - `PAW-REL-00` Read-only preflight — Ready
 - `PAW-REL-01` Evidence/gate reconciliation — Blocked by REL-00
 - `PAW-REL-02` Offline acceptance — Blocked by REL-00/01; owner-operated
