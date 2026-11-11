@@ -8,6 +8,8 @@ pub mod authorization;
 pub mod dashboard;
 pub mod file_store;
 pub mod goal_repository;
+pub mod knowledge_repository;
+pub mod learning_repository;
 pub mod search;
 pub mod task_repository;
 pub mod workspace_repository;

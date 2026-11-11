@@ -15,48 +15,138 @@ pub enum ProtectedAction {
     /// Create a new workspace (a consequential, user-visible record).
     CreateWorkspace,
     /// Create a project inside the given workspace.
-    CreateProject { workspace_id: WorkspaceId },
+    CreateProject {
+        workspace_id: WorkspaceId,
+    },
     /// Modify an existing project (name, description, status, links).
-    UpdateProject { workspace_id: WorkspaceId },
+    UpdateProject {
+        workspace_id: WorkspaceId,
+    },
     /// Delete a project inside the given workspace.
-    DeleteProject { workspace_id: WorkspaceId },
+    DeleteProject {
+        workspace_id: WorkspaceId,
+    },
     /// Delete a workspace and all its records.
-    DeleteWorkspace { workspace_id: WorkspaceId },
+    DeleteWorkspace {
+        workspace_id: WorkspaceId,
+    },
     /// Create an area inside the given workspace.
-    CreateArea { workspace_id: WorkspaceId },
+    CreateArea {
+        workspace_id: WorkspaceId,
+    },
     /// Modify an existing area.
-    UpdateArea { workspace_id: WorkspaceId },
+    UpdateArea {
+        workspace_id: WorkspaceId,
+    },
     /// Delete an area inside the given workspace.
-    DeleteArea { workspace_id: WorkspaceId },
+    DeleteArea {
+        workspace_id: WorkspaceId,
+    },
     /// Create a goal inside the given workspace.
-    CreateGoal { workspace_id: WorkspaceId },
+    CreateGoal {
+        workspace_id: WorkspaceId,
+    },
     /// Modify an existing goal.
-    UpdateGoal { workspace_id: WorkspaceId },
+    UpdateGoal {
+        workspace_id: WorkspaceId,
+    },
     /// Delete a goal inside the given workspace.
-    DeleteGoal { workspace_id: WorkspaceId },
+    DeleteGoal {
+        workspace_id: WorkspaceId,
+    },
     /// Create a task inside the given workspace.
-    CreateTask { workspace_id: WorkspaceId },
+    CreateTask {
+        workspace_id: WorkspaceId,
+    },
     /// Modify an existing task (title, notes, project link).
-    UpdateTask { workspace_id: WorkspaceId },
+    UpdateTask {
+        workspace_id: WorkspaceId,
+    },
     /// Move an existing task through its status machine.
-    TransitionTask { workspace_id: WorkspaceId },
+    TransitionTask {
+        workspace_id: WorkspaceId,
+    },
     /// Delete a task inside the given workspace.
-    DeleteTask { workspace_id: WorkspaceId },
+    DeleteTask {
+        workspace_id: WorkspaceId,
+    },
     /// Add an attachment to a project or task (bytes go to the managed
     /// file store; metadata to SQLite).
-    CreateAttachment { workspace_id: WorkspaceId },
+    CreateAttachment {
+        workspace_id: WorkspaceId,
+    },
     /// Remove an attachment (metadata row + stored bytes).
-    DeleteAttachment { workspace_id: WorkspaceId },
+    DeleteAttachment {
+        workspace_id: WorkspaceId,
+    },
     /// Request cooperative cancellation of an operation (E3-01).
-    CancelOperation { workspace_id: WorkspaceId },
+    CancelOperation {
+        workspace_id: WorkspaceId,
+    },
     /// Reconcile an OutcomeUnknown operation back into Running.
-    ResumeOperation { workspace_id: WorkspaceId },
+    ResumeOperation {
+        workspace_id: WorkspaceId,
+    },
     /// Re-drive a quarantined outbox message (explicit, audited).
-    RedriveMessage { workspace_id: WorkspaceId },
+    RedriveMessage {
+        workspace_id: WorkspaceId,
+    },
     /// Export the durable-operation history of a workspace (pre-purge step).
-    ExportWorkspaceData { workspace_id: WorkspaceId },
+    ExportWorkspaceData {
+        workspace_id: WorkspaceId,
+    },
     /// Purge expired operations/audit rows (explicit, system-wide).
     PurgeExpiredData,
+    /// Learning & Growth lifecycle actions (PAW-LG-001～006, E4).
+    CreateLearningRoadmap {
+        workspace_id: WorkspaceId,
+    },
+    UpdateLearningRoadmap {
+        workspace_id: WorkspaceId,
+    },
+    DeleteLearningRoadmap {
+        workspace_id: WorkspaceId,
+    },
+    CreateLearningPlan {
+        workspace_id: WorkspaceId,
+    },
+    UpdateLearningPlan {
+        workspace_id: WorkspaceId,
+    },
+    DeleteLearningPlan {
+        workspace_id: WorkspaceId,
+    },
+    CreateLearningItem {
+        workspace_id: WorkspaceId,
+    },
+    UpdateLearningItem {
+        workspace_id: WorkspaceId,
+    },
+    DeleteLearningItem {
+        workspace_id: WorkspaceId,
+    },
+    AppendLearningSession {
+        workspace_id: WorkspaceId,
+    },
+    LinkLearningItemProject {
+        workspace_id: WorkspaceId,
+    },
+    CreateTaskForLearningItem {
+        workspace_id: WorkspaceId,
+    },
+    /// Knowledge & Context metadata actions (PAW-K-001, E4).
+    CreateKnowledgeRef {
+        workspace_id: WorkspaceId,
+    },
+    UpdateKnowledgeRef {
+        workspace_id: WorkspaceId,
+    },
+    DeleteKnowledgeRef {
+        workspace_id: WorkspaceId,
+    },
+    SetKnowledgeAvailability {
+        workspace_id: WorkspaceId,
+    },
 }
 
 impl ProtectedAction {
@@ -85,6 +175,22 @@ impl ProtectedAction {
             Self::RedriveMessage { .. } => "message.redrive",
             Self::ExportWorkspaceData { .. } => "data.export",
             Self::PurgeExpiredData => "data.purge",
+            Self::CreateLearningRoadmap { .. } => "learning.roadmap.create",
+            Self::UpdateLearningRoadmap { .. } => "learning.roadmap.update",
+            Self::DeleteLearningRoadmap { .. } => "learning.roadmap.delete",
+            Self::CreateLearningPlan { .. } => "learning.plan.create",
+            Self::UpdateLearningPlan { .. } => "learning.plan.update",
+            Self::DeleteLearningPlan { .. } => "learning.plan.delete",
+            Self::CreateLearningItem { .. } => "learning.item.create",
+            Self::UpdateLearningItem { .. } => "learning.item.update",
+            Self::DeleteLearningItem { .. } => "learning.item.delete",
+            Self::AppendLearningSession { .. } => "learning.session.append",
+            Self::LinkLearningItemProject { .. } => "learning.item.link_project",
+            Self::CreateTaskForLearningItem { .. } => "learning.item.create_task",
+            Self::CreateKnowledgeRef { .. } => "knowledge.ref.create",
+            Self::UpdateKnowledgeRef { .. } => "knowledge.ref.update",
+            Self::DeleteKnowledgeRef { .. } => "knowledge.ref.delete",
+            Self::SetKnowledgeAvailability { .. } => "knowledge.ref.set_availability",
         }
     }
 
@@ -113,6 +219,22 @@ impl ProtectedAction {
             | Self::ResumeOperation { workspace_id }
             | Self::RedriveMessage { workspace_id }
             | Self::ExportWorkspaceData { workspace_id } => Some(workspace_id),
+            Self::CreateLearningRoadmap { workspace_id }
+            | Self::UpdateLearningRoadmap { workspace_id }
+            | Self::DeleteLearningRoadmap { workspace_id }
+            | Self::CreateLearningPlan { workspace_id }
+            | Self::UpdateLearningPlan { workspace_id }
+            | Self::DeleteLearningPlan { workspace_id }
+            | Self::CreateLearningItem { workspace_id }
+            | Self::UpdateLearningItem { workspace_id }
+            | Self::DeleteLearningItem { workspace_id }
+            | Self::AppendLearningSession { workspace_id }
+            | Self::LinkLearningItemProject { workspace_id }
+            | Self::CreateTaskForLearningItem { workspace_id }
+            | Self::CreateKnowledgeRef { workspace_id }
+            | Self::UpdateKnowledgeRef { workspace_id }
+            | Self::DeleteKnowledgeRef { workspace_id }
+            | Self::SetKnowledgeAvailability { workspace_id } => Some(workspace_id),
             Self::PurgeExpiredData => None,
         }
     }

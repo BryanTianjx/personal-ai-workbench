@@ -20,8 +20,10 @@ use paw_application::ports::authorization::ExecutionContext;
 use paw_application::ports::workspace_repository::WorkspaceRepositoryError;
 use paw_application::use_cases::work_management::{self as use_cases, WorkManagementError};
 use paw_application::{
-    Area, AreaId, Goal, GoalId, Project, ProjectId, ProjectStatus, Task, TaskId, TaskStatus,
-    ValidationError, Workspace, WorkspaceId,
+    Area, AreaId, Availability, Goal, GoalId, Item, ItemId, ItemKind, ItemStatus, KnowledgeRefId,
+    KnowledgeSource, Plan, PlanId, PlanStatus, Project, ProjectId, ProjectStatus, Roadmap,
+    RoadmapId, Session, SessionId, Task, TaskId, TaskStatus, ValidationError, Workspace,
+    WorkspaceId,
 };
 use paw_infrastructure::repositories::area_repository::SqliteAreaRepository;
 use paw_infrastructure::repositories::goal_repository::SqliteGoalRepository;
@@ -38,6 +40,11 @@ pub struct WorkManagementApi {
     areas: SqliteAreaRepository,
     goals: SqliteGoalRepository,
     tasks: SqliteTaskRepository,
+    roadmaps: paw_infrastructure::repositories::learning_repository::SqliteRoadmapRepository,
+    plans: paw_infrastructure::repositories::learning_repository::SqlitePlanRepository,
+    items: paw_infrastructure::repositories::learning_repository::SqliteItemRepository,
+    sessions: paw_infrastructure::repositories::learning_repository::SqliteSessionRepository,
+    knowledge: paw_infrastructure::repositories::knowledge_repository::SqliteKnowledgeRefRepository,
     search: paw_infrastructure::search::SqliteSearchService,
     dashboard: paw_infrastructure::dashboard::SqliteDashboard,
     attachments:
@@ -60,6 +67,26 @@ impl WorkManagementApi {
             areas: SqliteAreaRepository::open(db_path)?,
             goals: SqliteGoalRepository::open(db_path)?,
             tasks: SqliteTaskRepository::open(db_path)?,
+            roadmaps:
+                paw_infrastructure::repositories::learning_repository::SqliteRoadmapRepository::open(
+                    db_path,
+                )?,
+            plans:
+                paw_infrastructure::repositories::learning_repository::SqlitePlanRepository::open(
+                    db_path,
+                )?,
+            items:
+                paw_infrastructure::repositories::learning_repository::SqliteItemRepository::open(
+                    db_path,
+                )?,
+            sessions:
+                paw_infrastructure::repositories::learning_repository::SqliteSessionRepository::open(
+                    db_path,
+                )?,
+            knowledge:
+                paw_infrastructure::repositories::knowledge_repository::SqliteKnowledgeRefRepository::open(
+                    db_path,
+                )?,
             search: paw_infrastructure::search::SqliteSearchService::open(db_path)?,
             dashboard: paw_infrastructure::dashboard::SqliteDashboard::open(db_path)?,
             attachments:
@@ -329,6 +356,435 @@ impl WorkManagementApi {
                 CommandError::Unexpected
             }
         })
+    }
+
+    // -- Learning & Growth (E4, PAW-LG-001～006) ---------------------------------
+
+    /// Gate + audit helper for the E4 flows that run directly on the
+    /// adapters: authorization check (denial audited, `denied` surfaced),
+    /// then an Allowed audit row for the gated action. Post-gate constraint
+    /// failures surface as typed command errors.
+    fn gate_and_audit(
+        &self,
+        action: &paw_application::ports::authorization::ProtectedAction,
+        workspace_id: &WorkspaceId,
+        resource_type: &'static str,
+        resource_id: Option<&str>,
+    ) -> Result<(), CommandError> {
+        let ctx = self.context();
+        check_gate(
+            &self.authorizer,
+            &self.audit,
+            &ctx,
+            action,
+            Some(workspace_id),
+            resource_type,
+            resource_id,
+        )?;
+        self.audit
+            .record(&paw_application::ports::audit::AuditEvent {
+                workspace_id: Some(workspace_id.clone()),
+                actor_id: ctx.actor_id.clone(),
+                action: action.action_key(),
+                resource_type,
+                resource_id: resource_id.map(str::to_string),
+                outcome: paw_application::ports::audit::AuditOutcome::Allowed,
+                correlation_id: ctx.correlation_id.clone(),
+            });
+        Ok(())
+    }
+
+    pub fn list_roadmaps(&self, workspace_id: &WorkspaceId) -> Result<Vec<Roadmap>, CommandError> {
+        use paw_application::ports::learning_repository::RoadmapRepository;
+        self.roadmaps
+            .list_roadmaps(workspace_id)
+            .map_err(CommandError::from_learning)
+    }
+
+    pub fn create_roadmap(
+        &self,
+        workspace_id: &WorkspaceId,
+        name: &str,
+        description: Option<&str>,
+    ) -> Result<Roadmap, CommandError> {
+        let roadmap = Roadmap::new(RoadmapId::new_v7(), workspace_id.clone(), name, description)
+            .map_err(WorkManagementError::from)
+            .map_err(CommandError::from)?;
+        self.gate_and_audit(
+            &paw_application::ports::authorization::ProtectedAction::CreateLearningRoadmap {
+                workspace_id: workspace_id.clone(),
+            },
+            workspace_id,
+            "learning_roadmap",
+            Some(roadmap.id.as_str()),
+        )?;
+        use paw_application::ports::learning_repository::RoadmapRepository;
+        self.roadmaps
+            .insert_roadmap(&roadmap)
+            .map_err(CommandError::from_learning)?;
+        Ok(roadmap)
+    }
+
+    pub fn delete_roadmap(
+        &self,
+        workspace_id: &WorkspaceId,
+        roadmap_id: &RoadmapId,
+    ) -> Result<(), CommandError> {
+        self.gate_and_audit(
+            &paw_application::ports::authorization::ProtectedAction::DeleteLearningRoadmap {
+                workspace_id: workspace_id.clone(),
+            },
+            workspace_id,
+            "learning_roadmap",
+            Some(roadmap_id.as_str()),
+        )?;
+        use paw_application::ports::learning_repository::RoadmapRepository;
+        self.roadmaps
+            .delete_roadmap(workspace_id, roadmap_id)
+            .map_err(CommandError::from_learning)
+    }
+
+    pub fn list_plans(
+        &self,
+        workspace_id: &WorkspaceId,
+        roadmap_id: Option<&RoadmapId>,
+    ) -> Result<Vec<Plan>, CommandError> {
+        use paw_application::ports::learning_repository::PlanRepository;
+        self.plans
+            .list_plans(workspace_id, roadmap_id)
+            .map_err(CommandError::from_learning)
+    }
+
+    pub fn create_plan(
+        &self,
+        workspace_id: &WorkspaceId,
+        roadmap_id: &RoadmapId,
+        name: &str,
+        description: Option<&str>,
+    ) -> Result<Plan, CommandError> {
+        let plan = Plan::new(
+            PlanId::new_v7(),
+            workspace_id.clone(),
+            roadmap_id.clone(),
+            name,
+            description,
+        )
+        .map_err(WorkManagementError::from)
+        .map_err(CommandError::from)?;
+        self.gate_and_audit(
+            &paw_application::ports::authorization::ProtectedAction::CreateLearningPlan {
+                workspace_id: workspace_id.clone(),
+            },
+            workspace_id,
+            "learning_plan",
+            Some(plan.id.as_str()),
+        )?;
+        use paw_application::ports::learning_repository::PlanRepository;
+        self.plans
+            .insert_plan(&plan)
+            .map_err(CommandError::from_learning)?;
+        Ok(plan)
+    }
+
+    pub fn update_plan_status(
+        &self,
+        workspace_id: &WorkspaceId,
+        plan_id: &PlanId,
+        status: PlanStatus,
+    ) -> Result<Plan, CommandError> {
+        use paw_application::ports::learning_repository::PlanRepository;
+        let mut plan = self
+            .plans
+            .find_plan(workspace_id, plan_id)
+            .map_err(CommandError::from_learning)?
+            .ok_or(CommandError::LearningRecordNotFound)?;
+        plan.status = status;
+        self.gate_and_audit(
+            &paw_application::ports::authorization::ProtectedAction::UpdateLearningPlan {
+                workspace_id: workspace_id.clone(),
+            },
+            workspace_id,
+            "learning_plan",
+            Some(plan.id.as_str()),
+        )?;
+        self.plans
+            .update_plan(&plan)
+            .map_err(CommandError::from_learning)?;
+        Ok(plan)
+    }
+
+    pub fn list_items(
+        &self,
+        workspace_id: &WorkspaceId,
+        plan_id: Option<&PlanId>,
+    ) -> Result<Vec<Item>, CommandError> {
+        use paw_application::ports::learning_repository::ItemRepository;
+        self.items
+            .list_items(workspace_id, plan_id, None)
+            .map_err(CommandError::from_learning)
+    }
+
+    pub fn create_item(
+        &self,
+        workspace_id: &WorkspaceId,
+        plan_id: &PlanId,
+        kind: ItemKind,
+        title: &str,
+        expected_outcome: Option<&str>,
+        acceptance_criteria: Option<&str>,
+    ) -> Result<Item, CommandError> {
+        let item = Item::new(
+            ItemId::new_v7(),
+            workspace_id.clone(),
+            plan_id.clone(),
+            kind,
+            title,
+            expected_outcome,
+            acceptance_criteria,
+            None,
+        )
+        .map_err(WorkManagementError::from)
+        .map_err(CommandError::from)?;
+        self.gate_and_audit(
+            &paw_application::ports::authorization::ProtectedAction::CreateLearningItem {
+                workspace_id: workspace_id.clone(),
+            },
+            workspace_id,
+            "learning_item",
+            Some(item.id.as_str()),
+        )?;
+        use paw_application::ports::learning_repository::ItemRepository;
+        self.items
+            .insert_item(&item)
+            .map_err(CommandError::from_learning)?;
+        Ok(item)
+    }
+
+    pub fn transition_item(
+        &self,
+        workspace_id: &WorkspaceId,
+        item_id: &ItemId,
+        to: ItemStatus,
+    ) -> Result<Item, CommandError> {
+        use paw_application::ports::learning_repository::ItemRepository;
+        let mut item = self
+            .items
+            .find_item(workspace_id, item_id)
+            .map_err(CommandError::from_learning)?
+            .ok_or(CommandError::LearningRecordNotFound)?;
+        if !item.status.can_transition_to(to) {
+            return Err(CommandError::TaskStatusInvalid);
+        }
+        item.status = to;
+        self.gate_and_audit(
+            &paw_application::ports::authorization::ProtectedAction::UpdateLearningItem {
+                workspace_id: workspace_id.clone(),
+            },
+            workspace_id,
+            "learning_item",
+            Some(item.id.as_str()),
+        )?;
+        self.items
+            .update_item(&item)
+            .map_err(CommandError::from_learning)?;
+        Ok(item)
+    }
+
+    pub fn link_item_to_project(
+        &self,
+        workspace_id: &WorkspaceId,
+        item_id: &ItemId,
+        project_id: &ProjectId,
+    ) -> Result<(), CommandError> {
+        self.gate_and_audit(
+            &paw_application::ports::authorization::ProtectedAction::LinkLearningItemProject {
+                workspace_id: workspace_id.clone(),
+            },
+            workspace_id,
+            "learning_item",
+            Some(item_id.as_str()),
+        )?;
+        use paw_application::ports::learning_repository::ItemRepository;
+        self.items
+            .attach_item_to_project(workspace_id, item_id, project_id)
+            .map_err(CommandError::from_learning)
+    }
+
+    /// PAW-LG-006 (CreateTaskForLearningItem semantics): create a Work
+    /// Management task for a learning item — the task remains Work
+    /// Management-owned; the action-step link is recorded. The first linked
+    /// project (if any) becomes the task's project.
+    pub fn create_task_for_item(
+        &self,
+        workspace_id: &WorkspaceId,
+        item_id: &ItemId,
+        title: &str,
+    ) -> Result<Task, CommandError> {
+        use paw_application::ports::learning_repository::ItemRepository;
+        let item = self
+            .items
+            .find_item(workspace_id, item_id)
+            .map_err(CommandError::from_learning)?
+            .ok_or(CommandError::LearningRecordNotFound)?;
+        let projects = self
+            .items
+            .list_projects_for_item(workspace_id, item_id)
+            .map_err(CommandError::from_learning)?;
+        let task = self.create_task(workspace_id, projects.first().cloned(), title, None)?;
+        self.gate_and_audit(
+            &paw_application::ports::authorization::ProtectedAction::CreateTaskForLearningItem {
+                workspace_id: workspace_id.clone(),
+            },
+            workspace_id,
+            "learning_item",
+            Some(item.id.as_str()),
+        )?;
+        self.items
+            .attach_task_to_item(workspace_id, item_id, &task.id)
+            .map_err(CommandError::from_learning)?;
+        Ok(task)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn append_session(
+        &self,
+        workspace_id: &WorkspaceId,
+        item_id: &ItemId,
+        method: Option<&str>,
+        duration_minutes: Option<i64>,
+        summary: Option<&str>,
+        difficulty: Option<&str>,
+        takeaway: Option<&str>,
+        next_step: Option<&str>,
+    ) -> Result<Session, CommandError> {
+        let session = Session::new(
+            SessionId::new_v7(),
+            workspace_id.clone(),
+            item_id.clone(),
+            None,
+            None,
+            method,
+            duration_minutes,
+            summary,
+            difficulty,
+            takeaway,
+            next_step,
+            paw_infrastructure::sqlite::now_ms().map_err(|_| CommandError::Unexpected)?,
+        )
+        .map_err(WorkManagementError::from)
+        .map_err(CommandError::from)?;
+        self.gate_and_audit(
+            &paw_application::ports::authorization::ProtectedAction::AppendLearningSession {
+                workspace_id: workspace_id.clone(),
+            },
+            workspace_id,
+            "learning_session",
+            Some(session.id.as_str()),
+        )?;
+        use paw_application::ports::learning_repository::SessionRepository;
+        self.sessions
+            .append_session(&session)
+            .map_err(CommandError::from_learning)?;
+        Ok(session)
+    }
+
+    pub fn list_sessions(
+        &self,
+        workspace_id: &WorkspaceId,
+        item_id: Option<&ItemId>,
+    ) -> Result<Vec<Session>, CommandError> {
+        use paw_application::ports::learning_repository::SessionRepository;
+        self.sessions
+            .list_sessions(workspace_id, item_id)
+            .map_err(CommandError::from_learning)
+    }
+
+    // -- Knowledge & Context (E4, PAW-K-001) -------------------------------------
+
+    pub fn list_knowledge_refs(
+        &self,
+        workspace_id: &WorkspaceId,
+        availability: Option<Availability>,
+    ) -> Result<Vec<paw_application::KnowledgeRef>, CommandError> {
+        use paw_application::ports::knowledge_repository::KnowledgeRefRepository;
+        self.knowledge
+            .list_knowledge_refs(workspace_id, availability)
+            .map_err(CommandError::from_knowledge)
+    }
+
+    pub fn create_knowledge_ref(
+        &self,
+        workspace_id: &WorkspaceId,
+        title: &str,
+        source: KnowledgeSource,
+        external_uri: Option<&str>,
+        locator: Option<&str>,
+        version_label: Option<&str>,
+    ) -> Result<paw_application::KnowledgeRef, CommandError> {
+        let knowledge_ref = paw_application::KnowledgeRef::new(
+            KnowledgeRefId::new_v7(),
+            workspace_id.clone(),
+            title,
+            source,
+            external_uri,
+            locator,
+            version_label,
+            None,
+        )
+        .map_err(WorkManagementError::from)
+        .map_err(CommandError::from)?;
+        self.gate_and_audit(
+            &paw_application::ports::authorization::ProtectedAction::CreateKnowledgeRef {
+                workspace_id: workspace_id.clone(),
+            },
+            workspace_id,
+            "knowledge_ref",
+            Some(knowledge_ref.id.as_str()),
+        )?;
+        use paw_application::ports::knowledge_repository::KnowledgeRefRepository;
+        self.knowledge
+            .insert_knowledge_ref(&knowledge_ref)
+            .map_err(CommandError::from_knowledge)?;
+        Ok(knowledge_ref)
+    }
+
+    pub fn set_knowledge_availability(
+        &self,
+        workspace_id: &WorkspaceId,
+        knowledge_ref_id: &KnowledgeRefId,
+        availability: Availability,
+    ) -> Result<paw_application::KnowledgeRef, CommandError> {
+        self.gate_and_audit(
+            &paw_application::ports::authorization::ProtectedAction::SetKnowledgeAvailability {
+                workspace_id: workspace_id.clone(),
+            },
+            workspace_id,
+            "knowledge_ref",
+            Some(knowledge_ref_id.as_str()),
+        )?;
+        use paw_application::ports::knowledge_repository::KnowledgeRefRepository;
+        self.knowledge
+            .set_availability(workspace_id, knowledge_ref_id, availability)
+            .map_err(CommandError::from_knowledge)
+    }
+
+    pub fn delete_knowledge_ref(
+        &self,
+        workspace_id: &WorkspaceId,
+        knowledge_ref_id: &KnowledgeRefId,
+    ) -> Result<(), CommandError> {
+        self.gate_and_audit(
+            &paw_application::ports::authorization::ProtectedAction::DeleteKnowledgeRef {
+                workspace_id: workspace_id.clone(),
+            },
+            workspace_id,
+            "knowledge_ref",
+            Some(knowledge_ref_id.as_str()),
+        )?;
+        use paw_application::ports::knowledge_repository::KnowledgeRefRepository;
+        self.knowledge
+            .delete_knowledge_ref(workspace_id, knowledge_ref_id)
+            .map_err(CommandError::from_knowledge)
     }
 
     // -- Operation queue (E3-04) ------------------------------------------------
@@ -918,6 +1374,10 @@ pub enum CommandError {
     OwnerNotFound,
     /// The referenced operation does not exist (E3-04).
     OperationNotFound,
+    /// The referenced learning record does not exist (E4).
+    LearningRecordNotFound,
+    /// The referenced knowledge reference does not exist (E4).
+    KnowledgeRefNotFound,
     /// Fresh authorization refused the protected side effect (E1-09).
     Denied,
     /// Any other failure; details stay on the Rust side.
@@ -1031,6 +1491,30 @@ impl CommandError {
     fn from_io(e: std::io::Error) -> Self {
         let _ = e;
         Self::Unexpected
+    }
+
+    /// Learning record failures: typed not-found codes, else opaque.
+    fn from_learning(
+        e: paw_application::ports::learning_repository::LearningRepositoryError,
+    ) -> Self {
+        use paw_application::ports::learning_repository::LearningRepositoryError as E;
+        match e {
+            E::RoadmapNotFound | E::PlanNotFound | E::ItemNotFound | E::SessionNotFound => {
+                Self::LearningRecordNotFound
+            }
+            E::Invariant(_) => Self::Unexpected,
+        }
+    }
+
+    /// Knowledge reference failures: typed not-found code, else opaque.
+    fn from_knowledge(
+        e: paw_application::ports::knowledge_repository::KnowledgeRepositoryError,
+    ) -> Self {
+        use paw_application::ports::knowledge_repository::KnowledgeRepositoryError as E;
+        match e {
+            E::KnowledgeRefNotFound => Self::KnowledgeRefNotFound,
+            E::Invariant(_) => Self::Unexpected,
+        }
     }
 }
 
@@ -1338,6 +1822,259 @@ pub fn dashboard(
         .lock()
         .expect("WorkManagementApi mutex must not be poisoned");
     api.dashboard(&workspace_id)
+}
+
+// -- Learning & Growth (E4) ------------------------------------------------
+
+#[tauri::command]
+pub fn list_roadmaps(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+) -> Result<Vec<Roadmap>, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.list_roadmaps(&workspace_id)
+}
+
+#[tauri::command]
+pub fn create_roadmap(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    name: String,
+    description: Option<String>,
+) -> Result<Roadmap, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.create_roadmap(&workspace_id, &name, description.as_deref())
+}
+
+#[tauri::command]
+pub fn delete_roadmap(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    roadmap_id: RoadmapId,
+) -> Result<(), CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.delete_roadmap(&workspace_id, &roadmap_id)
+}
+
+#[tauri::command]
+pub fn list_plans(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    roadmap_id: Option<RoadmapId>,
+) -> Result<Vec<Plan>, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.list_plans(&workspace_id, roadmap_id.as_ref())
+}
+
+#[tauri::command]
+pub fn create_plan(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    roadmap_id: RoadmapId,
+    name: String,
+    description: Option<String>,
+) -> Result<Plan, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.create_plan(&workspace_id, &roadmap_id, &name, description.as_deref())
+}
+
+#[tauri::command]
+pub fn update_plan_status(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    plan_id: PlanId,
+    status: PlanStatus,
+) -> Result<Plan, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.update_plan_status(&workspace_id, &plan_id, status)
+}
+
+#[tauri::command]
+pub fn list_items(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    plan_id: Option<PlanId>,
+) -> Result<Vec<Item>, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.list_items(&workspace_id, plan_id.as_ref())
+}
+
+#[tauri::command]
+pub fn create_item(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    plan_id: PlanId,
+    kind: ItemKind,
+    title: String,
+    expected_outcome: Option<String>,
+    acceptance_criteria: Option<String>,
+) -> Result<Item, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.create_item(
+        &workspace_id,
+        &plan_id,
+        kind,
+        &title,
+        expected_outcome.as_deref(),
+        acceptance_criteria.as_deref(),
+    )
+}
+
+#[tauri::command]
+pub fn transition_item(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    item_id: ItemId,
+    to: ItemStatus,
+) -> Result<Item, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.transition_item(&workspace_id, &item_id, to)
+}
+
+#[tauri::command]
+pub fn link_item_to_project(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    item_id: ItemId,
+    project_id: ProjectId,
+) -> Result<(), CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.link_item_to_project(&workspace_id, &item_id, &project_id)
+}
+
+#[tauri::command]
+pub fn create_task_for_item(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    item_id: ItemId,
+    title: String,
+) -> Result<Task, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.create_task_for_item(&workspace_id, &item_id, &title)
+}
+
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub fn append_session(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    item_id: ItemId,
+    method: Option<String>,
+    duration_minutes: Option<i64>,
+    summary: Option<String>,
+    difficulty: Option<String>,
+    takeaway: Option<String>,
+    next_step: Option<String>,
+) -> Result<Session, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.append_session(
+        &workspace_id,
+        &item_id,
+        method.as_deref(),
+        duration_minutes,
+        summary.as_deref(),
+        difficulty.as_deref(),
+        takeaway.as_deref(),
+        next_step.as_deref(),
+    )
+}
+
+#[tauri::command]
+pub fn list_sessions(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    item_id: Option<ItemId>,
+) -> Result<Vec<Session>, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.list_sessions(&workspace_id, item_id.as_ref())
+}
+
+// -- Knowledge & Context (E4) ------------------------------------------------
+
+#[tauri::command]
+pub fn list_knowledge_refs(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    availability: Option<paw_application::Availability>,
+) -> Result<Vec<paw_application::KnowledgeRef>, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.list_knowledge_refs(&workspace_id, availability)
+}
+
+#[tauri::command]
+pub fn create_knowledge_ref(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    title: String,
+    source: paw_application::KnowledgeSource,
+    external_uri: Option<String>,
+    locator: Option<String>,
+    version_label: Option<String>,
+) -> Result<paw_application::KnowledgeRef, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.create_knowledge_ref(
+        &workspace_id,
+        &title,
+        source,
+        external_uri.as_deref(),
+        locator.as_deref(),
+        version_label.as_deref(),
+    )
+}
+
+#[tauri::command]
+pub fn set_knowledge_availability(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    knowledge_ref_id: paw_application::KnowledgeRefId,
+    availability: paw_application::Availability,
+) -> Result<paw_application::KnowledgeRef, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.set_knowledge_availability(&workspace_id, &knowledge_ref_id, availability)
+}
+
+#[tauri::command]
+pub fn delete_knowledge_ref(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    knowledge_ref_id: paw_application::KnowledgeRefId,
+) -> Result<(), CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.delete_knowledge_ref(&workspace_id, &knowledge_ref_id)
 }
 
 #[tauri::command]

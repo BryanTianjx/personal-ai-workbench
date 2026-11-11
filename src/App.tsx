@@ -48,6 +48,66 @@ type Dashboard = {
   projects_by_status: [string, number][];
   tasks_by_status: [string, number][];
   attachment_count: number;
+  roadmap_count: number;
+  learning_plan_count: number;
+  learning_item_count: number;
+  learning_session_count: number;
+};
+type Roadmap = {
+  id: string;
+  workspace_id: string;
+  name: string;
+  description: string | null;
+};
+type Plan = {
+  id: string;
+  workspace_id: string;
+  roadmap_id: string;
+  name: string;
+  description: string | null;
+  status: "draft" | "active" | "paused" | "completed" | "archived";
+};
+type LearningItem = {
+  id: string;
+  workspace_id: string;
+  plan_id: string;
+  kind:
+    | "concept"
+    | "reading"
+    | "exercise"
+    | "experiment"
+    | "implementation"
+    | "review";
+  title: string;
+  expected_outcome: string | null;
+  acceptance_criteria: string | null;
+  notes: string | null;
+  status: "todo" | "in_progress" | "done" | "cancelled";
+};
+type LearningSession = {
+  id: string;
+  workspace_id: string;
+  item_id: string;
+  task_id: string | null;
+  project_id: string | null;
+  method: string | null;
+  duration_minutes: number | null;
+  summary: string | null;
+  difficulty: string | null;
+  takeaway: string | null;
+  next_step: string | null;
+  occurred_at: number;
+};
+type KnowledgeRef = {
+  id: string;
+  workspace_id: string;
+  title: string;
+  source: "lingshu" | "hindsight" | "web" | "local";
+  external_uri: string | null;
+  locator: string | null;
+  version_label: string | null;
+  notes: string | null;
+  availability: "available" | "stale" | "unavailable";
 };
 type OperationRow = {
   id: string;
@@ -148,6 +208,25 @@ export default function App() {
   const [operations, setOperations] = useState<OperationRow[]>([]);
   const [quarantined, setQuarantined] = useState<QuarantinedMessage[]>([]);
 
+  // ---- Learning & Knowledge state (E4) ----
+  const [roadmaps, setRoadmaps] = useState<Roadmap[]>([]);
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const [learningItems, setLearningItems] = useState<LearningItem[]>([]);
+  const [learningSessions, setLearningSessions] = useState<LearningSession[]>([]);
+  const [knowledgeRefs, setKnowledgeRefs] = useState<KnowledgeRef[]>([]);
+  const [roadmapName, setRoadmapName] = useState("");
+  const [planName, setPlanName] = useState("");
+
+  const [itemTitle, setItemTitle] = useState("");
+  const [itemKind, setItemKind] = useState<LearningItem["kind"]>("implementation");
+
+
+  const [sessionSummary, setSessionSummary] = useState("");
+  const [sessionItem, setSessionItem] = useState<string>("");
+  const [knowledgeTitle, setKnowledgeTitle] = useState("");
+  const [knowledgeSource, setKnowledgeSource] = useState<KnowledgeRef["source"]>("web");
+  const [knowledgeUri, setKnowledgeUri] = useState("");
+
   const fail = (e: unknown) => setNotice(describe(e));
 
   // ---- Loaders ----
@@ -212,6 +291,22 @@ export default function App() {
       .catch(fail);
     invoke<QuarantinedMessage[]>("list_quarantined_messages", { workspaceId })
       .then((r) => setQuarantined(r))
+      .catch(fail);
+    // Learning & Knowledge lists (E4).
+    invoke<Roadmap[]>("list_roadmaps", { workspaceId })
+      .then((r) => setRoadmaps(r))
+      .catch(fail);
+    invoke<Plan[]>("list_plans", { workspaceId, roadmapId: null })
+      .then((r) => setPlans(r))
+      .catch(fail);
+    invoke<LearningItem[]>("list_items", { workspaceId, planId: null })
+      .then((r) => setLearningItems(r))
+      .catch(fail);
+    invoke<LearningSession[]>("list_sessions", { workspaceId, itemId: null })
+      .then((r) => setLearningSessions(r))
+      .catch(fail);
+    invoke<KnowledgeRef[]>("list_knowledge_refs", { workspaceId, availability: null })
+      .then((r) => setKnowledgeRefs(r))
       .catch(fail);
   }, [workspaceId]);
 
@@ -377,6 +472,147 @@ export default function App() {
       setHits(result);
     });
 
+  // ---- Learning & Knowledge actions (E4) ----
+  const createRoadmap = () =>
+    run(
+      () =>
+        invoke<Roadmap>("create_roadmap", {
+          workspaceId,
+          name: roadmapName,
+          description: null,
+        }),
+      () => {
+        setRoadmapName("");
+        reloadAll();
+      },
+    );
+
+  const createPlan = (roadmapId: string) =>
+    run(
+      () =>
+        invoke<Plan>("create_plan", {
+          workspaceId,
+          roadmapId,
+          name: planName,
+          description: null,
+        }),
+      () => {
+        setPlanName("");
+        reloadAll();
+      },
+    );
+
+  const cyclePlanStatus = (p: Plan) =>
+    run(
+      () =>
+        invoke<Plan>("update_plan_status", {
+          workspaceId,
+          planId: p.id,
+          status:
+            p.status === "draft"
+              ? "active"
+              : p.status === "active"
+                ? "completed"
+                : "archived",
+        }),
+      reloadAll,
+    );
+
+  const createItem = (planId: string) =>
+    run(
+      () =>
+        invoke<LearningItem>("create_item", {
+          workspaceId,
+          planId,
+          kind: itemKind,
+          title: itemTitle,
+          expectedOutcome: null,
+          acceptanceCriteria: null,
+        }),
+      () => {
+        setItemTitle("");
+        reloadAll();
+      },
+    );
+
+  const linkItemProject = (item: LearningItem, projectId: string) =>
+    run(
+      () =>
+        invoke<void>("link_item_to_project", {
+          workspaceId,
+          itemId: item.id,
+          projectId,
+        }),
+      reloadAll,
+    );
+
+  const createTaskForItem = (item: LearningItem) =>
+    run(
+      () =>
+        invoke<Task>("create_task_for_item", {
+          workspaceId,
+          itemId: item.id,
+          title: `学习动作：${item.title}`,
+        }),
+      () => setNotice(`已通过 Work Management 创建任务（学习项：${item.title}）`),
+    );
+
+  const appendSession = (itemId: string) =>
+    run(
+      () =>
+        invoke<LearningSession>("append_session", {
+          workspaceId,
+          itemId,
+          method: "实践",
+          durationMinutes: null,
+          summary: sessionSummary || null,
+          difficulty: null,
+          takeaway: null,
+          nextStep: null,
+        }),
+      () => {
+        setSessionSummary("");
+        reloadAll();
+      },
+    );
+
+  const createKnowledgeRef = () =>
+    run(
+      () =>
+        invoke<KnowledgeRef>("create_knowledge_ref", {
+          workspaceId,
+          title: knowledgeTitle,
+          source: knowledgeSource,
+          externalUri: knowledgeUri || null,
+          locator: null,
+          versionLabel: null,
+        }),
+      () => {
+        setKnowledgeTitle("");
+        setKnowledgeUri("");
+        reloadAll();
+      },
+    );
+
+  const cycleKnowledgeAvailability = (k: KnowledgeRef) =>
+    run(
+      () =>
+        invoke<KnowledgeRef>("set_knowledge_availability", {
+          workspaceId,
+          knowledgeRefId: k.id,
+          availability:
+            k.availability === "available"
+              ? "stale"
+              : k.availability === "stale"
+                ? "unavailable"
+                : "available",
+        }),
+      reloadAll,
+    );
+
+  const deleteKnowledgeRef = (id: string) =>
+    run(() => invoke<void>("delete_knowledge_ref", { workspaceId, knowledgeRefId: id }), reloadAll);
+
   // ---- Operation queue actions (E3-04) ----
   const cancelOperation = (op: OperationRow) =>
     run(async () => {
@@ -487,6 +723,10 @@ export default function App() {
                   {dashboard.tasks_by_status.map(([s, n]) => `${s}=${n}`).join("，")}
                 </li>
                 <li>附件：{dashboard.attachment_count}</li>
+                <li>
+                  学习：路线 {dashboard.roadmap_count} · 计划 {dashboard.learning_plan_count} ·
+                  项 {dashboard.learning_item_count} · Session {dashboard.learning_session_count}
+                </li>
               </ul>
             ) : (
               <p>加载中…</p>
@@ -767,6 +1007,207 @@ export default function App() {
                   {m.last_redrive_by && `，上次操作者：${m.last_redrive_by}`}）{" "}
                   <button onClick={() => redriveMessage(m)} disabled={busy}>
                     重驱
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          {/* Learning & Growth (E4) */}
+          <section>
+            <h2>学习</h2>
+            <input
+              value={roadmapName}
+              onChange={(e) => setRoadmapName(e.target.value)}
+              placeholder="路线名称（1–200 字符）"
+              disabled={busy}
+            />
+            <button onClick={createRoadmap} disabled={busy || !roadmapName.trim()}>
+              创建路线
+            </button>
+            <ul>
+              {roadmaps.map((r) => (
+                <li key={r.id}>
+                  <strong>{r.name}</strong>
+                  <div>
+                    计划：
+                    <input
+                      value={planName}
+                      onChange={(e) => setPlanName(e.target.value)}
+                      placeholder="计划名称"
+                      disabled={busy}
+                    />
+                    <button
+                      onClick={() => createPlan(r.id)}
+                      disabled={busy || !planName.trim()}
+                    >
+                      创建计划
+                    </button>
+                    <ul>
+                      {plans
+                        .filter((p) => p.roadmap_id === r.id)
+                        .map((p) => (
+                          <li key={p.id}>
+                            {p.name}（{p.status}）{" "}
+                            <button onClick={() => cyclePlanStatus(p)} disabled={busy}>
+                              推进状态
+                            </button>{" "}
+                            <div>
+                              项：
+                              <input
+                                value={itemTitle}
+                                onChange={(e) => setItemTitle(e.target.value)}
+                                placeholder="学习项标题"
+                                disabled={busy}
+                              />
+                              <select
+                                value={itemKind}
+                                onChange={(e) =>
+                                  setItemKind(e.target.value as LearningItem["kind"])
+                                }
+                                disabled={busy}
+                              >
+                                <option value="concept">概念</option>
+                                <option value="reading">阅读</option>
+                                <option value="exercise">练习</option>
+                                <option value="experiment">实验</option>
+                                <option value="implementation">实现</option>
+                                <option value="review">复盘</option>
+                              </select>
+                              <button
+                                onClick={() => createItem(p.id)}
+                                disabled={busy || !itemTitle.trim()}
+                              >
+                                添加学习项
+                              </button>
+                              <ul>
+                                {learningItems
+                                  .filter((i) => i.plan_id === p.id)
+                                  .map((i) => (
+                                    <li key={i.id}>
+                                      {i.title}（{i.kind}，{i.status}）{" "}
+                                      <button
+                                        onClick={() =>
+                                          invoke<LearningItem>("transition_item", {
+                                            workspaceId,
+                                            itemId: i.id,
+                                            to:
+                                              i.status === "todo"
+                                                ? "in_progress"
+                                                : i.status === "in_progress"
+                                                  ? "done"
+                                                  : "todo",
+                                          })
+                                            .then(() => reloadAll())
+                                            .catch(fail)
+                                        }
+                                        disabled={busy || i.status === "done" || i.status === "cancelled"}
+                                      >
+                                        推进状态
+                                      </button>{" "}
+                                      <select
+                                        value=""
+                                        onChange={(e) => {
+                                          if (e.target.value)
+                                            linkItemProject(i, e.target.value);
+                                        }}
+                                        disabled={busy}
+                                      >
+                                        <option value="">关联项目…</option>
+                                        {projects.map((pr) => (
+                                          <option key={pr.id} value={pr.id}>
+                                            {pr.name}
+                                          </option>
+                                        ))}
+                                      </select>{" "}
+                                      <button
+                                        onClick={() => createTaskForItem(i)}
+                                        disabled={busy}
+                                      >
+                                        生成任务
+                                      </button>
+                                      <div>
+                                        Session：
+                                        <input
+                                          value={sessionItem === i.id ? sessionSummary : ""}
+                                          onChange={(e) => {
+                                            setSessionItem(i.id);
+                                            setSessionSummary(e.target.value);
+                                          }}
+                                          placeholder="学习摘要"
+                                          disabled={busy}
+                                        />
+                                        <button
+                                          onClick={() => appendSession(i.id)}
+                                          disabled={
+                                            busy || sessionItem !== i.id || !sessionSummary.trim()
+                                          }
+                                        >
+                                          记录 Session
+                                        </button>
+                                        <ul>
+                                          {learningSessions
+                                            .filter((s) => s.item_id === i.id)
+                                            .map((s) => (
+                                              <li key={s.id}>
+                                                {new Date(s.occurred_at).toLocaleString()}：
+                                                {s.summary ?? "(无摘要)"}
+                                                {s.duration_minutes !== null &&
+                                                  `（${s.duration_minutes} 分钟）`}
+                                              </li>
+                                            ))}
+                                        </ul>
+                                      </div>
+                                    </li>
+                                  ))}
+                              </ul>
+                            </div>
+                          </li>
+                        ))}
+                    </ul>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          {/* Knowledge & Context (E4) */}
+          <section>
+            <h2>知识引用</h2>
+            <input
+              value={knowledgeTitle}
+              onChange={(e) => setKnowledgeTitle(e.target.value)}
+              placeholder="知识标题（1–200 字符）"
+              disabled={busy}
+            />
+            <select
+              value={knowledgeSource}
+              onChange={(e) => setKnowledgeSource(e.target.value as KnowledgeRef["source"])}
+              disabled={busy}
+            >
+              <option value="web">Web</option>
+              <option value="lingshu">Lingshu</option>
+              <option value="hindsight">Hindsight</option>
+              <option value="local">本地</option>
+            </select>
+            <input
+              value={knowledgeUri}
+              onChange={(e) => setKnowledgeUri(e.target.value)}
+              placeholder="外部 URI（可选）"
+              disabled={busy}
+            />
+            <button onClick={createKnowledgeRef} disabled={busy || !knowledgeTitle.trim()}>
+              添加引用
+            </button>
+            <ul>
+              {knowledgeRefs.map((k) => (
+                <li key={k.id}>
+                  {k.title}（{k.source}，{k.availability}）{" "}
+                  <button onClick={() => cycleKnowledgeAvailability(k)} disabled={busy}>
+                    切换可用性
+                  </button>{" "}
+                  <button onClick={() => deleteKnowledgeRef(k.id)} disabled={busy}>
+                    删除
                   </button>
                 </li>
               ))}
