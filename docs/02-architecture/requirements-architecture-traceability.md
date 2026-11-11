@@ -20,6 +20,13 @@
 | PAW-INF-002 | Rust workspace dependency direction and enforced forbidden edges | Cross-cutting (workspace) | module-boundary-rules.md; E1-rust-workspace-layout.md | ADR-018 | E1 |
 | PAW-INF-003 | Durable Operation/OperationAttempt persistence, restart recovery, unsafe-retry blocking | Cross-cutting (paw-application/infrastructure) | E0.3.2-engineering-specification.md; data-architecture.md | ADR-019 | E1/E3 |
 | PAW-INF-004 | Contract/event versioning, idempotent consumption, poison-message quarantine | Cross-cutting (published contracts) | cross-domain-data-contracts.md; E0.3.2-engineering-specification.md | ADR-020 | E3/E4 |
+| PAW-INF-005 | Capability registry metadata-only resolution; governed invocation through owning-domain use cases and coordination | Cross-cutting (capability governance) | ADR-026-capability-registry-and-ai-invocation.md | ADR-026 | E5 |
+| PAW-INF-006 | Agent invocation security: untrusted input default-deny, exact approval binding, per-side-effect re-authorization, OutcomeUnknown reconciliation, redacted audit | Cross-cutting (AI/coordination boundary) | ADR-029-agent-invocation-security-and-approval.md; agent-authorization-model.md | ADR-029 | E5 |
+| PAW-INF-007 | First-party plugin static registration, dependency DAG governance, four independent lifecycle dimensions, no data loss on disable, Learning boundary retained | Cross-cutting (platform composition) | ADR-023-domain-plugin-model.md; ADR-027-first-party-domain-plugin-policy.md; ADR-028-plugin-dependency-compatibility-governance.md | ADR-023/027/028 | E7 |
+| PAW-INF-008 | RoleProfile as experience template only: no grants/secrets/approval, safe fallback, no authorization effect | Cross-cutting (presentation) | ADR-024-role-profile-model.md | ADR-024 | E7 |
+| PAW-INF-009 | WorkspaceComposition scoped to one Data Workspace, references/configuration only, backend authorization at use time, safe fallback | Cross-cutting (presentation) | ADR-025-workspace-composition.md | ADR-025 | E7 |
+
+PAW-INF-005～009 trace the ADR-023～029 R1 direction (owner-directed planning adjustment, 2026-11-12). The governing ADRs remain **Proposed / Not Implemented / Not Verified**; these rows record the design mapping only and do not constitute acceptance. The Target column follows the roadmap owner's stage assignment (E5 absorbs ADR-026/029; E7 = platform composition, V1.0 前置).
 
 ## Verification rules
 

@@ -1,6 +1,8 @@
 # 产品路线图
 
-**状态：** Accepted planning baseline · **版本：** 0.4.0 (E0.3 review extension + ADR-021 stage/version mapping)
+**状态：** Accepted planning baseline · **版本：** 0.5.0 (0.4.0 基础上按 ADR-023～029 R1 方向调整 E5 设计基线并新增 E7 阶段；调整由 owner 于 2026-11-12 指示，**不构成任何 ADR 的批准**，ADR-023～029 仍为 Proposed)
+
+**E7 定档决策记录：** 插件模型/RoleProfile/WorkspaceComposition/依赖治理映射为新增阶段 E7、前置交付 V1.0（而非并入 Beta 0.5）。理由：ADR-027 禁止插件化扩张既有 Alpha/Beta 交付范围；Beta 0.5 已冻结为内容增量；V1.0 的"个人工作与成长平台"定位即角色化组合的收口。如 owner 后续改判，修订本节即可。
 
 ## E0 — 产品与架构基线
 
@@ -21,6 +23,19 @@ Windows 桌面应用（Windows-only 交付与验收，macOS 见 ADR-021）；Goa
 统一 Agent Adapter 契约；Agent 注册和受控执行（通过安全门禁后）；KnowledgeRef；Lingshu/Hindsight 连接器评估与实现；Learning Roadmap、Plan、Item、Session 基础生命周期；Learning 与 Project/Task/KnowledgeRef/Artifact 的契约关联。
 
 **前置门禁：** 外部 Agent 执行启用前，[ADR-022](../03-adr/ADR-022-workbench-hermes-boundary.md)（Workbench ↔ Hermes 边界）必须先批准为 Accepted。
+
+**E5 设计基线更新（ADR-026/029，Proposed）：** E5 的"Agent adapter 与受控授权"不再按临时授权方案实现，而以 [ADR-026](../03-adr/ADR-026-capability-registry-and-ai-invocation.md)（能力注册表与五层调用治理）和 [ADR-029](../03-adr/ADR-029-agent-invocation-security-and-approval.md)（调用安全与精确审批绑定）为设计基线：能力描述符版本化、默认拒绝、审批绑定不可变规范化计划摘要、每个副作用前重新授权、OutcomeUnknown 走 ADR-019 对账。两份 ADR 批准为 Accepted 是 E5 实现规格开工的前置；批准前 E5 只允许做实现规格草案，不进入代码实现。E0.3 §4 对 E5 的既有退出证据（fake-provider conformance、approval binding、unknown-outcome reconciliation）与 ADR-026/029 的 Validation required 一致，验收口径不变。
+
+## E7 — 领域插件与角色化组合（V1.0 前置，新增）
+
+以 [ADR-023](../03-adr/ADR-023-domain-plugin-model.md)（领域插件模型与静态注册优先）、[ADR-024](../03-adr/ADR-024-role-profile-model.md)（RoleProfile 仅为体验模板）、[ADR-025](../03-adr/ADR-025-workspace-composition.md)（WorkspaceComposition 与 Data Workspace 分离）、[ADR-027](../03-adr/ADR-027-first-party-domain-plugin-policy.md)（一方插件采用策略与 Learning 边界）、[ADR-028](../03-adr/ADR-028-plugin-dependency-compatibility-governance.md)（依赖与兼容治理）为设计基线：
+
+- 内置一方插件静态注册：插件描述符（身份、版本、依赖、能力、UI 扩展点、迁移命名空间、生命周期策略）、依赖 DAG 校验与启动失败隔离。
+- 插件四状态维度独立建模（注册/可用性/组合偏好/展示可见性）；停用隐藏扩展、阻断新调用，**不删数据、不改历史、不静默取消进行中的 Operation**（ADR-019 drain/reconcile）。
+- RoleProfile 体验模板与 WorkspaceComposition 组合配置：仅存引用与展示配置，不承载授权、凭据或审批；后端授权始终以 Data Workspace 为边界。
+- 版本维度分离治理（plugin/descriptor schema/capability contract/data migration/minimum app version），破坏性变更 fail closed。
+
+**前置门禁：** ADR-023/024/025/027/028 逐份批准为 Accepted；实现规格与实现授权按项目惯例另行开闸。插件采用按 ADR-027 的领域就绪标准增量进行，不做大爆炸重写；本阶段不得加速或扩张 Learning/Beta 既定范围。
 
 ## Beta 0.5 — 内容生产与项目实践成长
 
@@ -43,9 +58,10 @@ Windows 桌面应用（Windows-only 交付与验收，macOS 见 ADR-021）；Goa
 工程阶段（E1–E6+，定义见 E0.3 架构调整方案 §4）与产品版本的映射以 [ADR-021](../03-adr/ADR-021-stage-version-mapping-windows-only-alpha.md) 为准：
 
 - **Alpha 0.1 = E1 + E2 + E3**（工程骨架、Work Management 纵向切片、备份/审计/Operation 基座）。
-- **Alpha 0.2 = E4 + E5**（KnowledgeRef 与 Learning 基础生命周期、Agent adapter 与受控授权）。
+- **Alpha 0.2 = E4 + E5**（KnowledgeRef 与 Learning 基础生命周期、Agent adapter 与受控授权；E5 按 ADR-026/029 设计基线）。
 - **Beta 0.5 = E6.x 增量**（Skill/Evidence/Assessment、Creator、Automation 分批交付）。
-- **V1.0** = 跨域工作与成长闭环收口；V1.1+/V1.3+（服务端、多设备、多 Agent）不映射 E 阶段，需另行规划。
+- **V1.0 = E7 + 收口**（E7 领域插件与角色化组合为 V1.0 平台化前置阶段；随后跨域工作与成长闭环收口）。
+- **V1.1+/V1.3+**（服务端、多设备、多 Agent）不映射 E 阶段，需另行规划。
 - 平台范围：Alpha 0.1 起 Windows-only 交付与验收；macOS 为后续版本 macOS readiness 里程碑目标。
 
 ## 里程碑门禁
@@ -55,9 +71,9 @@ Windows 桌面应用（Windows-only 交付与验收，macOS 见 ADR-021）；Goa
 - Gate E0：PRD、需求追踪、架构和验收基线通过评审。
 - Gate E0.3：Coordination、模块边界、Operation 可靠性、契约版本和 E1 验收方案通过架构评审；ADR-017～020 已批准。
 - Gate Alpha 0.1（阶段 E1–E3）：Windows 原生构建、安装、启动；完全离线核心闭环；重启持久化；备份恢复；迁移与 Workspace 隔离测试通过。
-- Gate Alpha 0.2（阶段 E4–E5）：Agent/知识/学习集成权限、关联与失败降级通过；外部 Agent 执行启用以 ADR-022 批准为前置。
+- Gate Alpha 0.2（阶段 E4–E5）：Agent/知识/学习集成权限、关联与失败降级通过；外部 Agent 执行启用以 ADR-022 批准为前置；E5 的能力注册/调用治理以 ADR-026/029 批准为实现前置，验收按两 ADR 的 Validation required 执行。
 - Gate Beta 0.5（阶段 E6.x）：内容流程、审核、发布辅助和证据化评估按增量通过。
-- 发布门禁（V1.0）：Windows 安装、升级、恢复、安全和发布检查通过；macOS 在其 readiness 里程碑独立完成原生验收。
+- Gate V1.0（阶段 E7 + 收口）：E7 插件注册/依赖 DAG/四状态维度/组合与档案不承载权限的验收通过，ADR-023/024/025/027/028 批准为前置；随后发布门禁——Windows 安装、升级、恢复、安全和发布检查通过；macOS 在其 readiness 里程碑独立完成原生验收。
 
 ## E1 首个纵向切片
 

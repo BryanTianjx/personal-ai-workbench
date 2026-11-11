@@ -1,7 +1,7 @@
 # 需求基线与追踪规则
 
 **状态：** Accepted planning baseline；实现状态另行追踪
-**版本：** 0.3.0（PAW-N 平台范围经 ADR-021 调整；新增 §4 基础设施需求）
+**版本：** 0.4.0（0.3.0 基础上按 ADR-023～029 R1 方向新增 §4 PAW-INF-005～009；调整由 owner 于 2026-11-12 指示，对应 ADR 仍为 Proposed，批准前不排实现）
 
 ## 1. 优先级定义
 
@@ -44,6 +44,13 @@
 | PAW-INF-002 | Rust workspace 依赖方向向内、禁止边由自动化架构检查强制（目录约定不充分） | ADR-018 | E1 | ADR-018 Validation required |
 | PAW-INF-003 | Operation/OperationAttempt 持久化、进程重启恢复、OutcomeUnknown 阻断非幂等重试、状态机不与 Task/Workflow Run/Agent Execution 混用 | ADR-019 | E1/E3 | ADR-019 Validation required |
 | PAW-INF-004 | 跨域契约/事件版本化、at-least-once 投递与消费幂等、未知版本隔离、毒消息有界重试 | ADR-020 | E3/E4 | ADR-020 Validation required |
+| PAW-INF-005 | 能力注册表与治理式调用：描述符版本化（ID/属主域/契约版本/schema/risk class/idempotency/offline/approval hint）、Registry 仅元数据、调用经属主域 use case 与 Coordination | ADR-026 | E5 | ADR-026 Validation required |
+| PAW-INF-006 | Agent 调用安全与审批绑定：不可信输入默认拒绝、审批绑定规范化计划摘要/主体/工作区/范围/目标/有效期、每个副作用前重新授权、非幂等不确定结果不盲重试、审计证据完整且脱敏 | ADR-029 | E5 | ADR-029 Validation required |
+| PAW-INF-007 | 一方插件静态注册与依赖治理：描述符校验、依赖 DAG 与环拒绝、四状态维度独立（注册/可用/组合偏好/可见性）、版本维度分离 fail-closed、停用/移除不删数据且 Operation 先对账、Learning 一等领域不被 Core 吸收、插件化不扩张 Alpha/Beta 既定范围 | ADR-023/027/028 | E7 | ADR-023/027/028 Validation required |
+| PAW-INF-008 | RoleProfile 仅为体验模板：不携带 grant/凭据/审批；切换不改授权；导入校验剥离安全字段；失效/损坏模板安全回退 | ADR-024 | E7 | ADR-024 Validation required |
+| PAW-INF-009 | WorkspaceComposition 仅存引用与展示配置、限定单一 Data Workspace、使用时由后端授权解析、损坏/未知 schema 安全回退且不改业务数据 | ADR-025 | E7 | ADR-025 Validation required |
+
+PAW-INF-005～009 于 2026-11-12 按 [ADR-023～029 R1 方向](../04-quality/ADR-023-029-R1-cross-adr-review.md)引入：目标版本按本路线图 owner 决策归属（005/006→E5，007～009→E7）。对应 ADR 当前均为 Proposed / Not Accepted / Not Implemented / Not Verified；**各 ADR 批准为 Accepted 前，对应需求状态保持 proposed，不进入实现规格排期**。
 
 ## 5. P2 需求
 

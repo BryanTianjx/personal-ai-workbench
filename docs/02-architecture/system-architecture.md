@@ -91,9 +91,9 @@ The following decisions are part of the current baseline:
 - The Rust workspace starts with four crates (paw-domain, paw-application, paw-infrastructure, paw-desktop) and inward dependencies enforced by automated checks; see ADR-018.
 - Operation is a durable execution envelope with per-attempt records; Task, Workflow Run, Agent Execution and Operation keep separate owners and state machines; see ADR-019.
 - Published cross-domain DTOs and persisted event envelopes are versioned with explicit compatibility, idempotency and quarantine rules; see ADR-020.
-- Stages E1–E3 map to Alpha 0.1, E4–E5 to Alpha 0.2, E6.x to Beta 0.5; Alpha 0.1 onward is Windows-only delivery with macOS reserved behind platform-neutral boundaries; see ADR-021.
+- Stages E1–E3 map to Alpha 0.1, E4–E5 to Alpha 0.2, E6.x to Beta 0.5; E7 (platform composition) precedes the V1.0 closure; Alpha 0.1 onward is Windows-only delivery with macOS reserved behind platform-neutral boundaries; see ADR-021 and the roadmap v0.5.0 stage mapping.
 
-Remaining items requiring implementation design or prototype evidence include attachment content-addressing, plugin packaging/distribution, representative SQLite performance, and the future multi-device synchronization protocol. None of the above decisions implies implementation or verification is complete.
+Remaining items requiring implementation design or prototype evidence include attachment content-addressing, plugin descriptor serialization and registration mechanics (ADR-023 implementation specification, pending acceptance), representative SQLite performance, and the future multi-device synchronization protocol. None of the above decisions implies implementation or verification is complete.
 
 ## 9. E0.3 coordination and execution model
 
@@ -123,3 +123,12 @@ The initial workspace is intentionally small: `paw-domain`, `paw-application`, `
 ADR-017–020 were ratified as Accepted on 2026-11-08 through the repository owner's E0.3.2 direction. The E0.3.1 clarifications are normative and form part of each decision. Accepted establishes the design baseline only; implementation and verification remain Not Implemented and Not Verified.
 
 Open items: [ADR-021](../03-adr/ADR-021-stage-version-mapping-windows-only-alpha.md) fixes the stage-to-version mapping and Windows-only Alpha 0.1 delivery. [ADR-022](../03-adr/ADR-022-workbench-hermes-boundary.md) (Workbench ↔ Hermes execution boundary) is Proposed and must be ratified before Alpha 0.2 enables external Agent execution.
+
+## 11. Proposed direction: platform composition and governed capability invocation (ADR-023–029, R1)
+
+The R1 ADR package (2026-11-11, all **Proposed / Not Accepted / Not Implemented / Not Verified**; owner per-ADR approval outstanding per the [Hermes task package](../architecture/adr-023-029-hermes-task-package/README.md) H0 gate) extends this architecture along two axes. The four-crate modular monolith, single SQLite, domain ownership and ADR-019/020 reliability semantics are unchanged:
+
+1. **Composition axis (ADR-023/024/025/027/028 → stage E7, V1.0 前置):** first-party domains register as statically linked plugins — the plugin is the registration/composition unit, never a replacement domain owner. Four lifecycle dimensions stay independent (registration, availability, composition preference, presentation visibility). `RoleProfile` is an experience template and `WorkspaceComposition` a presentation aggregate scoped to one Data Workspace; neither carries grants, credentials or approvals. Dependency DAG validation, independent version dimensions and fail-closed compatibility govern evolution (ADR-028). Learning & Growth keeps its ADR-013–016 first-class ownership; pluginization does not widen Alpha/Beta scope (ADR-027).
+2. **Invocation axis (ADR-026/029 → absorbed into stage E5, Alpha 0.2):** domains publish versioned capability descriptors; a metadata-only Capability Registry resolves IDs/versions; authorization, approval policy, durable Operations, correlation and outbox stay in Application Governance & Coordination; AI Collaboration/Adapter owns Agent lifecycle and provider translation only; the external Agent Runtime stays untrusted with no repository access. Approvals bind to the canonical invocation-plan digest, identity, workspace, scope, target, expiry and attempt policy; policy is re-checked before every protected side effect; uncertain non-idempotent outcomes hold at OutcomeUnknown for reconciliation.
+
+The five-layer ownership model (Domain Capability Contract → Capability Registry → Application Governance & Coordination → AI Collaboration & Adapter → External Agent Runtime) refines, not replaces, the §2 logical architecture: the Registry is catalog infrastructure, dispatch is always mediated through the owning domain's use case. Cross-ADR consistency evidence: [ADR-023～029 R1 跨 ADR 一致性审查报告](../04-quality/ADR-023-029-R1-cross-adr-review.md).
