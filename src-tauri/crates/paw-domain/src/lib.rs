@@ -7,4 +7,6 @@
 //! architecture allowlist test). It must not depend on Tauri, SQL drivers,
 //! OS APIs, network clients, provider SDKs, or any other PAW crate.
 
+pub mod knowledge;
+pub mod learning;
 pub mod work_management;
