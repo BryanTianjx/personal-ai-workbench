@@ -145,7 +145,10 @@ mod tests {
             (OperationStatus::Pending, OperationStatus::Failed),
             (OperationStatus::AwaitingApproval, OperationStatus::Pending),
             (OperationStatus::AwaitingApproval, OperationStatus::Running),
-            (OperationStatus::AwaitingApproval, OperationStatus::Cancelled),
+            (
+                OperationStatus::AwaitingApproval,
+                OperationStatus::Cancelled,
+            ),
             (OperationStatus::AwaitingApproval, OperationStatus::Failed),
             (OperationStatus::Running, OperationStatus::RetryScheduled),
             (OperationStatus::Running, OperationStatus::OutcomeUnknown),
