@@ -385,3 +385,65 @@ impl AgentGrant {
 pub trait GrantStore {
     fn grants_for_subject(&self, subject_id: &str) -> Result<Vec<AgentGrant>, AuthorizationError>;
 }
+
+/// Grant evaluation helper — the single source of the agent-subject grant
+/// policy: a capability invocation is allowed when any fresh grant row
+/// covers the subject, capability, workspace and time window (authorization
+/// model §2 scope intersection; ADR-029 §4.4).
+pub fn grant_allows(
+    grants: &[AgentGrant],
+    subject_id: &str,
+    capability_id: &str,
+    workspace_id: &WorkspaceId,
+    now_ms: i64,
+) -> bool {
+    grants
+        .iter()
+        .any(|grant| grant.covers(subject_id, capability_id, workspace_id, now_ms))
+}
+
+/// Grant-driven authorizer for agent subjects (E5-02): every evaluation
+/// reads the store fresh, so revocation takes effect at the next side
+/// effect. The clock is injected so the pure application layer stays
+/// time-source-free; the infrastructure wiring passes the platform clock.
+pub struct GrantEvaluatedAuthorizer<G: GrantStore, F: Fn() -> i64> {
+    grants: G,
+    now_ms: F,
+}
+
+impl<G: GrantStore, F: Fn() -> i64> GrantEvaluatedAuthorizer<G, F> {
+    pub fn new(grants: G, now_ms: F) -> Self {
+        Self { grants, now_ms }
+    }
+}
+
+impl<G: GrantStore, F: Fn() -> i64> Authorizer for GrantEvaluatedAuthorizer<G, F> {
+    fn authorize(
+        &self,
+        ctx: &ExecutionContext,
+        action: &ProtectedAction,
+    ) -> Result<(), AuthorizationError> {
+        match action {
+            ProtectedAction::CapabilityInvoke {
+                workspace_id,
+                capability_id,
+            } => {
+                let grants = self.grants.grants_for_subject(&ctx.actor_id)?;
+                if grant_allows(
+                    &grants,
+                    &ctx.actor_id,
+                    capability_id,
+                    workspace_id,
+                    (self.now_ms)(),
+                ) {
+                    Ok(())
+                } else {
+                    Err(AuthorizationError::Denied)
+                }
+            }
+            // Agent subjects hold no other authority: registration, grant
+            // administration and approvals are human actions.
+            _ => Err(AuthorizationError::Denied),
+        }
+    }
+}

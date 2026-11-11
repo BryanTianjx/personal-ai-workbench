@@ -4,4 +4,5 @@
 //! Every use case takes an explicit repository port and workspace context;
 //! none of them may touch infrastructure or provider types.
 
+pub mod agent_invocation;
 pub mod work_management;

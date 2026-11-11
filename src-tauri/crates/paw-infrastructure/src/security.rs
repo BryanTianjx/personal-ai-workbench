@@ -174,10 +174,14 @@ impl<G: GrantStore> Authorizer for GovernedAuthorizer<G> {
             } => {
                 let now = sqlite::now_ms().map_err(|_| AuthorizationError::Denied)?;
                 let grants = self.grants.grants_for_subject(&ctx.actor_id)?;
-                if grants
-                    .iter()
-                    .any(|grant| grant.covers(&ctx.actor_id, capability_id, workspace_id, now))
-                {
+                // Shared policy: scope intersection evaluated on fresh rows.
+                if paw_application::ports::authorization::grant_allows(
+                    &grants,
+                    &ctx.actor_id,
+                    capability_id,
+                    workspace_id,
+                    now,
+                ) {
                     Ok(())
                 } else {
                     Err(AuthorizationError::Denied)

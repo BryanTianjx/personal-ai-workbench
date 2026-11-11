@@ -58,6 +58,10 @@ CREATE TABLE agent_executions (
     capability_id               TEXT NOT NULL,
     capability_contract_version TEXT NOT NULL,
     plan_digest                 TEXT NOT NULL CHECK (length(plan_digest) = 64),
+    tool_adapter                TEXT NOT NULL,
+    target_identity             TEXT NOT NULL,
+    material_params_digest      TEXT NOT NULL CHECK (length(material_params_digest) = 64),
+    parameters_json             TEXT NOT NULL CHECK (json_valid(parameters_json)),
     status                      TEXT NOT NULL CHECK (status IN
       ('Created','Validating','AwaitingApproval','Approved','Submitted','Running',
        'Completed','Failed','Cancelled','TimedOut','OutcomeUnknown')),

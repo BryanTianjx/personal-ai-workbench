@@ -368,6 +368,12 @@ pub fn is_valid_execution_transition(from: ExecutionStatus, to: ExecutionStatus)
 /// A workbench-owned agent execution record (`agent_executions`). The record
 /// is the provider-facing lifecycle; the durable Operation is the cross-cutting
 /// envelope and is linked by id without sharing state machines (ADR-019).
+///
+/// The record carries the full invocation identity (capability + contract
+/// version + plan digest + tool/target + material-parameter digest) so the
+/// approval binding can be reconstructed at decision time from persisted
+/// facts only — never from caller-supplied values (ADR-029 §4.3: the exact
+/// action displayed is the exact action decided and executed).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AgentExecution {
     pub id: AgentExecutionId,
@@ -377,6 +383,15 @@ pub struct AgentExecution {
     pub capability_contract_version: String,
     /// Canonical invocation plan digest (SHA-256 hex; §5 of the spec).
     pub plan_digest: String,
+    /// Tool/adapter identity in the plan (e.g. the fake transport).
+    pub tool_adapter: String,
+    /// Provider/target identity in the plan.
+    pub target_identity: String,
+    /// Digest over the material parameter payload (binding field).
+    pub material_params_digest: String,
+    /// Material parameters as canonical JSON (needed to execute; never
+    /// copied into the approval record).
+    pub parameters_json: String,
     pub status: ExecutionStatus,
     /// The durable Operation envelope opened for this execution, set once
     /// at pipeline open. Ids are opaque; the operation owns its own state.
@@ -384,6 +399,7 @@ pub struct AgentExecution {
 }
 
 impl AgentExecution {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: AgentExecutionId,
         registration_id: AgentRegistrationId,
@@ -391,10 +407,15 @@ impl AgentExecution {
         capability_id: &str,
         capability_contract_version: &str,
         plan_digest: &str,
+        tool_adapter: &str,
+        target_identity: &str,
+        material_params_digest: &str,
+        parameters_json: &str,
     ) -> Result<Self, GovernanceError> {
         validate_capability_id(capability_id)?;
         validate_contract_version(capability_contract_version)?;
         validate_digest(plan_digest)?;
+        validate_digest(material_params_digest)?;
         Ok(Self {
             id,
             registration_id,
@@ -402,6 +423,10 @@ impl AgentExecution {
             capability_id: capability_id.to_string(),
             capability_contract_version: capability_contract_version.to_string(),
             plan_digest: plan_digest.to_string(),
+            tool_adapter: tool_adapter.to_string(),
+            target_identity: target_identity.to_string(),
+            material_params_digest: material_params_digest.to_string(),
+            parameters_json: parameters_json.to_string(),
             status: ExecutionStatus::Created,
             operation_id: None,
         })
@@ -690,17 +715,25 @@ mod tests {
         assert_eq!(err, GovernanceError::InvalidCapabilityId);
     }
 
-    #[test]
-    fn execution_lifecycle_happy_path() {
-        let mut e = AgentExecution::new(
+    fn execution(registration: AgentRegistrationId) -> AgentExecution {
+        AgentExecution::new(
             AgentExecutionId::new_v7(),
-            reg().id,
+            registration,
             ws(),
             "work_management.task.create",
             "1.0.0",
             &digest(),
+            "fake",
+            "provider:fake",
+            &"b".repeat(64),
+            "{}",
         )
-        .expect("valid execution");
+        .expect("valid execution")
+    }
+
+    #[test]
+    fn execution_lifecycle_happy_path() {
+        let mut e = execution(reg().id);
         assert_eq!(e.status, ExecutionStatus::Created);
         for step in [
             ExecutionStatus::Validating,
@@ -717,15 +750,7 @@ mod tests {
 
     #[test]
     fn execution_unknown_outcome_blocks_blind_rerun() {
-        let mut e = AgentExecution::new(
-            AgentExecutionId::new_v7(),
-            reg().id,
-            ws(),
-            "work_management.task.create",
-            "1.0.0",
-            &digest(),
-        )
-        .expect("valid execution");
+        let mut e = execution(reg().id);
         for step in [
             ExecutionStatus::Validating,
             ExecutionStatus::Approved,
@@ -760,15 +785,7 @@ mod tests {
 
     #[test]
     fn execution_operation_associated_once() {
-        let mut e = AgentExecution::new(
-            AgentExecutionId::new_v7(),
-            reg().id,
-            ws(),
-            "work_management.task.create",
-            "1.0.0",
-            &digest(),
-        )
-        .expect("valid execution");
+        let mut e = execution(reg().id);
         e.associate_operation("op-1").expect("first link");
         assert!(e.associate_operation("op-2").is_err());
     }
@@ -782,7 +799,11 @@ mod tests {
                 ws(),
                 "no-dot",
                 "1.0.0",
-                &digest()
+                &digest(),
+                "fake",
+                "provider:fake",
+                &"b".repeat(64),
+                "{}"
             )
             .expect_err("capability id rejected"),
             GovernanceError::InvalidCapabilityId
@@ -794,7 +815,11 @@ mod tests {
                 ws(),
                 "work.task",
                 "0.1.0",
-                &digest()
+                &digest(),
+                "fake",
+                "provider:fake",
+                &"b".repeat(64),
+                "{}"
             )
             .expect_err("zero-major contract rejected"),
             GovernanceError::InvalidContractVersion
@@ -806,7 +831,11 @@ mod tests {
                 ws(),
                 "work.task",
                 "1.0.0",
-                "xyz"
+                "xyz",
+                "fake",
+                "provider:fake",
+                &"b".repeat(64),
+                "{}"
             )
             .expect_err("digest rejected"),
             GovernanceError::InvalidDigest

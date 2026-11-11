@@ -68,6 +68,45 @@ impl std::fmt::Display for OperationPortError {
 
 impl std::error::Error for OperationPortError {}
 
+/// Per-attempt evidence for an external side effect (ADR-019 §3: the
+/// attempt trail is the audit linkage between approvals and outcomes).
+/// Phase/outcome vocabularies mirror the storage CHECK strings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AttemptPhase {
+    Submit,
+    Poll,
+    Cancel,
+    Reconcile,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AttemptOutcome {
+    Started,
+    Rejected,
+    Accepted,
+    Completed,
+    Failed,
+    Indeterminate,
+    Cancelled,
+}
+
+/// One recorded attempt row.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExternalAttempt {
+    pub phase: AttemptPhase,
+    pub outcome: AttemptOutcome,
+    /// Canonical plan digest presented for this attempt.
+    pub request_digest: Option<String>,
+    /// Idempotency key (the workbench execution id where supported).
+    pub idempotency_key: Option<String>,
+    /// Provider-side reference when known.
+    pub external_reference: Option<String>,
+    /// Whether the failure classification allows a retry.
+    pub retryable: bool,
+    pub error_category: Option<String>,
+    pub error_code: Option<String>,
+}
+
 /// The durable envelope surface used by the invocation pipeline.
 pub trait OperationService {
     fn open(&self, open: &OpenOperation) -> Result<OperationEnvelope, OperationPortError>;
@@ -80,4 +119,10 @@ pub trait OperationService {
         to: OperationStatus,
         error_category: Option<&str>,
     ) -> Result<OperationEnvelope, OperationPortError>;
+    /// Append an attempt row to the envelope's evidence trail.
+    fn record_attempt(
+        &self,
+        operation_id: &str,
+        attempt: &ExternalAttempt,
+    ) -> Result<(), OperationPortError>;
 }

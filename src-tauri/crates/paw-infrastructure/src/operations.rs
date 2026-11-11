@@ -656,4 +656,43 @@ impl OperationService for SqliteOperationService {
             .map(envelope)
             .map_err(port_error)
     }
+
+    fn record_attempt(
+        &self,
+        operation_id: &str,
+        attempt: &paw_application::ports::operation_service::ExternalAttempt,
+    ) -> Result<(), OperationPortError> {
+        use paw_application::ports::operation_service::{
+            AttemptOutcome as PortOutcome, AttemptPhase as PortPhase,
+        };
+        let phase = match attempt.phase {
+            PortPhase::Submit => AttemptPhase::Submit,
+            PortPhase::Poll => AttemptPhase::Poll,
+            PortPhase::Cancel => AttemptPhase::Cancel,
+            PortPhase::Reconcile => AttemptPhase::Reconcile,
+        };
+        let outcome = match attempt.outcome {
+            PortOutcome::Started => AttemptOutcome::Started,
+            PortOutcome::Rejected => AttemptOutcome::Rejected,
+            PortOutcome::Accepted => AttemptOutcome::Accepted,
+            PortOutcome::Completed => AttemptOutcome::Completed,
+            PortOutcome::Failed => AttemptOutcome::Failed,
+            PortOutcome::Indeterminate => AttemptOutcome::Indeterminate,
+            PortOutcome::Cancelled => AttemptOutcome::Cancelled,
+        };
+        record_attempt(
+            &self.conn,
+            operation_id,
+            phase,
+            outcome,
+            attempt.request_digest.as_deref(),
+            attempt.idempotency_key.as_deref(),
+            attempt.external_reference.as_deref(),
+            attempt.retryable,
+            attempt.error_category.as_deref(),
+            attempt.error_code.as_deref(),
+        )
+        .map(|_| ())
+        .map_err(port_error)
+    }
 }

@@ -255,7 +255,8 @@ impl SqliteAgentExecutionRepository {
 }
 
 const EXECUTION_COLUMNS: &str = "id, registration_id, workspace_id, capability_id, \
-     capability_contract_version, plan_digest, status, operation_id, created_at, updated_at";
+     capability_contract_version, plan_digest, tool_adapter, target_identity, \
+     material_params_digest, parameters_json, status, operation_id, created_at, updated_at";
 
 fn row_to_execution(row: &rusqlite::Row<'_>) -> Result<AgentExecution, RepoError> {
     let status: String = row.get("status")?;
@@ -266,6 +267,10 @@ fn row_to_execution(row: &rusqlite::Row<'_>) -> Result<AgentExecution, RepoError
         capability_id: row.get("capability_id")?,
         capability_contract_version: row.get("capability_contract_version")?,
         plan_digest: row.get("plan_digest")?,
+        tool_adapter: row.get("tool_adapter")?,
+        target_identity: row.get("target_identity")?,
+        material_params_digest: row.get("material_params_digest")?,
+        parameters_json: row.get("parameters_json")?,
         status: ExecutionStatus::parse(&status)
             .expect("execution status values are constrained by the schema CHECK"),
         operation_id: row.get("operation_id")?,
@@ -279,8 +284,9 @@ impl AgentExecutionRepository for SqliteAgentExecutionRepository {
             .execute(
                 "INSERT INTO agent_executions
                  (id, registration_id, workspace_id, capability_id, capability_contract_version,
-                  plan_digest, status, operation_id, created_at, updated_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9)",
+                  plan_digest, tool_adapter, target_identity, material_params_digest,
+                  parameters_json, status, operation_id, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?13)",
                 rusqlite::params![
                     execution.id.as_str(),
                     execution.registration_id.as_str(),
@@ -288,6 +294,10 @@ impl AgentExecutionRepository for SqliteAgentExecutionRepository {
                     execution.capability_id,
                     execution.capability_contract_version,
                     execution.plan_digest,
+                    execution.tool_adapter,
+                    execution.target_identity,
+                    execution.material_params_digest,
+                    execution.parameters_json,
                     execution.status.as_str(),
                     execution.operation_id,
                     now,
