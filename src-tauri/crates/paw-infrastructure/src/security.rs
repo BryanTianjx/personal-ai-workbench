@@ -102,6 +102,22 @@ impl Authorizer for LocalSingleUserAuthorizer {
             | ProtectedAction::ResumeOperation { .. }
             | ProtectedAction::RedriveMessage { .. }
             | ProtectedAction::ExportWorkspaceData { .. }
+            | ProtectedAction::CreateLearningRoadmap { .. }
+            | ProtectedAction::UpdateLearningRoadmap { .. }
+            | ProtectedAction::DeleteLearningRoadmap { .. }
+            | ProtectedAction::CreateLearningPlan { .. }
+            | ProtectedAction::UpdateLearningPlan { .. }
+            | ProtectedAction::DeleteLearningPlan { .. }
+            | ProtectedAction::CreateLearningItem { .. }
+            | ProtectedAction::UpdateLearningItem { .. }
+            | ProtectedAction::DeleteLearningItem { .. }
+            | ProtectedAction::AppendLearningSession { .. }
+            | ProtectedAction::LinkLearningItemProject { .. }
+            | ProtectedAction::CreateTaskForLearningItem { .. }
+            | ProtectedAction::CreateKnowledgeRef { .. }
+            | ProtectedAction::UpdateKnowledgeRef { .. }
+            | ProtectedAction::DeleteKnowledgeRef { .. }
+            | ProtectedAction::SetKnowledgeAvailability { .. }
             | ProtectedAction::PurgeExpiredData => Ok(()),
         }
     }

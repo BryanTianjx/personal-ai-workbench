@@ -20,6 +20,13 @@ pub struct DashboardSummary {
     /// Tasks grouped by status key (todo/in_progress/done/cancelled).
     pub tasks_by_status: Vec<(String, i64)>,
     pub attachment_count: i64,
+    /// Learning & Growth counts (E4): roadmaps/plans/items/sessions —
+    /// plan progress and session activity are distinct rows, never merged
+    /// into a single fabricated score (PRD §4.1).
+    pub roadmap_count: i64,
+    pub learning_plan_count: i64,
+    pub learning_item_count: i64,
+    pub learning_session_count: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

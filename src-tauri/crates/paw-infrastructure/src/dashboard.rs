@@ -88,6 +88,24 @@ impl DashboardPort for SqliteDashboard {
             tasks_by_status.push((status.into(), n));
         }
 
+        // Learning & Growth counts (E4): real queries, distinct rows.
+        let roadmap_count = self.count(
+            "SELECT COUNT(*) FROM learning_roadmaps WHERE workspace_id = ?1",
+            workspace_id,
+        )?;
+        let learning_plan_count = self.count(
+            "SELECT COUNT(*) FROM learning_plans WHERE workspace_id = ?1",
+            workspace_id,
+        )?;
+        let learning_item_count = self.count(
+            "SELECT COUNT(*) FROM learning_items WHERE workspace_id = ?1",
+            workspace_id,
+        )?;
+        let learning_session_count = self.count(
+            "SELECT COUNT(*) FROM learning_sessions WHERE workspace_id = ?1",
+            workspace_id,
+        )?;
+
         Ok(DashboardSummary {
             workspace_id: workspace_id.clone(),
             area_count,
@@ -95,6 +113,10 @@ impl DashboardPort for SqliteDashboard {
             projects_by_status,
             tasks_by_status,
             attachment_count,
+            roadmap_count,
+            learning_plan_count,
+            learning_item_count,
+            learning_session_count,
         })
     }
 }
