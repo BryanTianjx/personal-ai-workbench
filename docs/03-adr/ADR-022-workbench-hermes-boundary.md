@@ -1,6 +1,6 @@
 # ADR-022: Workbench ↔ Hermes Execution Boundary
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-08
 - **Decision scope:** External Agent runtime boundary for the first mediated provider (Hermes), prerequisite for Alpha 0.2 Agent enablement
 - **Implementation Status:** Not Implemented

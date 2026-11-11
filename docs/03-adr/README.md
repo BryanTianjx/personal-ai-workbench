@@ -30,7 +30,7 @@ ADR 状态、实现状态和验证状态必须分开记录。Accepted 不代表�
 | [ADR-019](ADR-019-operation-lifecycle-reliability.md) | Durable Operation Lifecycle and Reliability Semantics | Accepted |
 | [ADR-020](ADR-020-cross-domain-contract-versioning.md) | Cross-Domain Contract and Event Versioning | Accepted |
 | [ADR-021](ADR-021-stage-version-mapping-windows-only-alpha.md) | Stage-to-Version Mapping and Windows-Only Alpha 0.1 Delivery | Accepted |
-| [ADR-022](ADR-022-workbench-hermes-boundary.md) | Workbench ↔ Hermes Execution Boundary | Proposed |
+| [ADR-022](ADR-022-workbench-hermes-boundary.md) | Workbench ↔ Hermes Execution Boundary | Accepted |
 | [ADR-023](ADR-023-domain-plugin-model.md) | Domain Plugin Model and Static Registration First | Accepted (R1) |
 | [ADR-024](ADR-024-role-profile-model.md) | Role Profile Is a User Experience Profile, Not an Authorization Role | Accepted (R1) |
 | [ADR-025](ADR-025-workspace-composition.md) | Workspace Composition Is Separate from the Data Workspace Boundary | Accepted (R1) |
@@ -45,7 +45,7 @@ ADR-007～012 未在当前基线中发现，不因新增 ADR 而补造或重新�
 
 每份 ADR 至少包含背景、决策驱动因素、候选方案（如适用）、决策、后果、显式风险与缓解措施、验证要求、决策状态、实施状态和验证状态。改变已接受的架构决策时，新增 ADR，不覆盖历史记录。
 
-E0.3.2 已于 2026-11-08 批准 ADR-017～020。ADR-022 仍为 Proposed。**ADR-023～029 R1 已于 2026-11-12 由仓库 owner 逐份批准为 Accepted**（决策记录见 [owner-review-checklist](../architecture/adr-023-029-hermes-task-package/owner-review-checklist.md) 与 [跨 ADR 评审报告 §9](../04-quality/ADR-023-029-R1-cross-adr-review.md)；条件为 R1 评审报告 §3/§7 的边界与不变量约束）。Accepted 仅表示设计决策批准：各 ADR 的 Implementation / Verification 状态仍为 Not Implemented / Not Verified，实现规格与实现开工是独立门禁。
+E0.3.2 已于 2026-11-08 批准 ADR-017～020。ADR-022 已于 2026-11-12 由 owner 批准为 Accepted（条件：真实 provider 启用仍以版本化兼容测试与操作手册为前置，批准不等于实现）。**ADR-023～029 R1 已于 2026-11-12 由仓库 owner 逐份批准为 Accepted**（决策记录见 [owner-review-checklist](../architecture/adr-023-029-hermes-task-package/owner-review-checklist.md) 与 [跨 ADR 评审报告 §9](../04-quality/ADR-023-029-R1-cross-adr-review.md)；条件为 R1 评审报告 §3/§7 的边界与不变量约束）。Accepted 仅表示设计决策批准：各 ADR 的 Implementation / Verification 状态仍为 Not Implemented / Not Verified，实现规格与实现开工是独立门禁。
 
 ## Review artifacts
 
