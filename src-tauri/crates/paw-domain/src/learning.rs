@@ -9,7 +9,9 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::work_management::{TASK_NOTES_MAX, ValidationError, opaque_id, validate_name};
+use crate::work_management::{
+    ProjectId, TASK_NOTES_MAX, ValidationError, WorkspaceId, opaque_id, validate_name,
+};
 
 opaque_id!(
     RoadmapId,
@@ -334,5 +336,171 @@ impl Session {
             next_step: next_step.map(str::to_string),
             occurred_at,
         })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Project learning-gap proposals (E6-02, Beta 0.5; PAW-LG-007, PRD §3.8/§5.3)
+// ---------------------------------------------------------------------------
+
+opaque_id!(
+    LearningGapProposalId,
+    "Opaque learning-gap proposal identifier (UUIDv7 text)."
+);
+
+/// A project-originated learning gap awaiting user confirmation. Learning
+/// owns the proposal; the project is referenced by id without any ownership
+/// transfer (ADR-014). AI/复盘 suggestions enter as `Proposed` — they become
+/// plan material only after explicit user confirmation (PRD §6: AI 生成
+/// 内容默认标记为建议).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LearningGapProposal {
+    pub id: LearningGapProposalId,
+    pub workspace_id: WorkspaceId,
+    pub project_id: ProjectId,
+    /// The gap description (复盘提出的待确认学习需求).
+    pub gap: String,
+    pub status: GapProposalStatus,
+    /// The learning item created upon confirmation (set once).
+    pub confirmed_item_id: Option<ItemId>,
+}
+
+/// Proposal lifecycle: `Proposed → Confirmed | Dismissed`; both terminal.
+/// Confirmation is user-only; dismissal records the decision without
+/// deleting the proposal (decision history is evidence too).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum GapProposalStatus {
+    Proposed,
+    Confirmed,
+    Dismissed,
+}
+
+impl GapProposalStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Proposed => "Proposed",
+            Self::Confirmed => "Confirmed",
+            Self::Dismissed => "Dismissed",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        Some(match value {
+            "Proposed" => Self::Proposed,
+            "Confirmed" => Self::Confirmed,
+            "Dismissed" => Self::Dismissed,
+            _ => return None,
+        })
+    }
+}
+
+impl LearningGapProposal {
+    pub fn new(
+        id: LearningGapProposalId,
+        workspace_id: WorkspaceId,
+        project_id: ProjectId,
+        gap: &str,
+    ) -> Result<Self, ValidationError> {
+        let trimmed = gap.trim();
+        if trimmed.is_empty() {
+            return Err(ValidationError::EmptyName);
+        }
+        if trimmed.chars().count() > 500 {
+            return Err(ValidationError::NotesTooLong { max: 500 });
+        }
+        Ok(Self {
+            id,
+            workspace_id,
+            project_id,
+            gap: trimmed.to_string(),
+            status: GapProposalStatus::Proposed,
+            confirmed_item_id: None,
+        })
+    }
+
+    /// Confirm the gap: binds the learning item the user chose (created
+    /// fresh or linked to an existing one by the application layer).
+    pub fn confirm(&mut self, item_id: ItemId) -> Result<(), GapTransitionError> {
+        if self.status != GapProposalStatus::Proposed {
+            return Err(GapTransitionError {
+                from: self.status.as_str().to_string(),
+            });
+        }
+        self.status = GapProposalStatus::Confirmed;
+        self.confirmed_item_id = Some(item_id);
+        Ok(())
+    }
+
+    /// Dismiss the proposal (user decision; kept as history).
+    pub fn dismiss(&mut self) -> Result<(), GapTransitionError> {
+        if self.status != GapProposalStatus::Proposed {
+            return Err(GapTransitionError {
+                from: self.status.as_str().to_string(),
+            });
+        }
+        self.status = GapProposalStatus::Dismissed;
+        Ok(())
+    }
+}
+
+/// Gap proposal transition refusal (non-leaky: only the current state).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GapTransitionError {
+    pub from: String,
+}
+
+impl std::fmt::Display for GapTransitionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "gap proposal is {} and can no longer transition",
+            self.from
+        )
+    }
+}
+
+impl std::error::Error for GapTransitionError {}
+
+#[cfg(test)]
+mod gap_tests {
+    use super::*;
+
+    #[test]
+    fn gap_proposal_confirm_binds_item_once() {
+        let mut gap = LearningGapProposal::new(
+            LearningGapProposalId::new_v7(),
+            WorkspaceId::new_v7(),
+            ProjectId::new_v7(),
+            "需要补充 Wi-Fi 6 帧聚合的协议知识",
+        )
+        .expect("valid gap");
+        assert_eq!(gap.status, GapProposalStatus::Proposed);
+        let item = ItemId::new_v7();
+        gap.confirm(item.clone()).expect("confirm");
+        assert_eq!(gap.confirmed_item_id, Some(item));
+        assert!(gap.confirm(ItemId::new_v7()).is_err());
+    }
+
+    #[test]
+    fn gap_proposal_dismiss_and_reject_bad_input() {
+        let mut gap = LearningGapProposal::new(
+            LearningGapProposalId::new_v7(),
+            WorkspaceId::new_v7(),
+            ProjectId::new_v7(),
+            "gap",
+        )
+        .expect("valid");
+        gap.dismiss().expect("dismiss");
+        assert!(gap.confirm(ItemId::new_v7()).is_err());
+        assert!(gap.dismiss().is_err());
+        assert!(
+            LearningGapProposal::new(
+                LearningGapProposalId::new_v7(),
+                WorkspaceId::new_v7(),
+                ProjectId::new_v7(),
+                "   "
+            )
+            .is_err()
+        );
     }
 }
