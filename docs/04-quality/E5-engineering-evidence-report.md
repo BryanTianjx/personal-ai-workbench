@@ -56,6 +56,18 @@
 6. Offline + restart: registrations/executions/approvals/grants persist; restart recovery of in-flight operations follows the E3 runbook behavior.
 7. Record OS/toolchain/commit + pass-fail per item as the human acceptance record (Gate F).
 
-### 6.1 Windowed run record
+### 6.1 Windowed run record (2026-11-13, Windows, toolchain 1.98.1, main @ 1b74b64→7217b30)
 
-_Pending — owner to record._
+Executed via `pnpm tauri dev`. Agent 协作 end to end — DB evidence (read-only probe of the live database):
+
+| Runbook item | Result | Evidence |
+|---|---|---|
+| 1–3 注册 + grant + 低风险调用 | **Pass** | agent hermes registered; agent.invocation [Succeeded] ×5 with attempt trail started→accepted→completed; work_management.task.create executions [Completed] ×4 |
+| 4 高风险批准 | **Pass** | data.purge approval [Consumed] 1/1 ↔ execution [Completed] (same-millisecond creation); approval.decide audited ×2 |
+| 4 高风险拒绝 | **Pass** | data.purge approvals [Revoked] ×2 ↔ executions [Cancelled] ×2 — approval revoked, execution cancelled, no blind retry |
+| 5 操作队列 | **Pass** | data.export [Succeeded] ×25 envelopes visible; export JSON written (defect #2 — queue did not refresh after export — fixed `c49828a` during the run) |
+| 6 Agent grant 管理 | **Pass** | 授权管理 panel added during the run (defect #3 — data.purge proposals were denied with no way to grant, `ca69acd`); grants create/revoke verified with exactly the granted capabilities |
+| 7 E7 停用门禁联动 | **Pass** | core.ai_collaboration disabled → data.export proposal refused (typed PluginDisabled, audited); re-enabled → runs. plugin.disable.toggle audited ×10 |
+| Persistence (G19) | **Pass** | data across restarts verified via the same live DB |
+
+**Defects found and fixed during the run:** #2 export queue refresh (`c49828a`); #3 grant management panel (`ca69acd`); #5 serde casing cross-cutting (`4fd30c9`, recorded in the E4 report).

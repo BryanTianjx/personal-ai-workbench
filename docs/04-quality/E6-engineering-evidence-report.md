@@ -53,9 +53,21 @@
 5. Offline + restart: skills/assessments/gaps/creator records persist.
 6. Record OS/toolchain/commit + pass-fail per item (Gate F).
 
-### 6.1 Windowed run record
+### 6.1 Windowed run record (2026-11-13, Windows, toolchain 1.98.1, main @ 1b74b64→7217b30)
 
-_Pending — owner to record._
+Executed via `pnpm tauri dev`. 技能评估/学习缺口/内容创作/项目复盘/平台组合 end to end — DB evidence:
+
+| Runbook item | Result | Evidence |
+|---|---|---|
+| 2 技能矩阵 | **Pass** | skill cet4 created (rendered with scale v1); evidence/assessment via command bridge (UI forms later increment) |
+| 3 学习缺口提议/搁置 | **Pass** | gaps 7787 Proposed + 336 Dismissed; LearningGapProposed.v1 ×3 + Dismissed.v1 ×2 atomically emitted |
+| 4 缺口确认绑定 | **Pass** | confirmation binds the chosen learning item (Confirmed status) |
+| 5 内容创作 topic→draft→version | **Pass** | topic wewe; draft versions v1–v5 appended (immutable snapshots; head bumps atomically); duplicate-draft noise from double-click is harmless history |
+| 6 审核 | **Pass** after `b7b7d8b` | reviews v1 Approved/v2 Rejected/v3–v5 Approved recorded as history; defect #4 — UI approval did not chain the status transition (status stuck InReview) — fixed during the run |
+| 7 发布记录 | **Pass** | wewe [Published] v5 + 为二二恩 [Published] ×2; publish records = 3, bound to exact versions; publishing automation remains gated |
+| 8 项目复盘回流 | **Pass** | retrospectives ×9, ProjectRetrospectiveRecorded.v1 ×9 (exactly-once); backflow verified REAL — sessions=1 retrospectives only succeed when the session's item is linked to the project; unlinked-session reference refused (no row inserted) |
+
+**Defects found and fixed during the run:** #3 grant panel (`ca69acd`, recorded in the E5 report); #4 review status chain (`b7b7d8b`); #5 serde casing (`4fd30c9`); #6 linkage visibility (`7217b30`).
 
 ## 7. Second batch (Beta 0.5 第二批, same stage branch family)
 

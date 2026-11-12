@@ -53,6 +53,16 @@
 5. Offline + restart: plugin states/profiles/compositions persist.
 6. Record OS/toolchain/commit + pass-fail per item (Gate F).
 
-### 6.1 Windowed run record
+### 6.1 Windowed run record (2026-11-13, Windows, toolchain 1.98.1, main @ 1b74b64→7217b30)
 
-_Pending — owner to record._
+Executed via `pnpm tauri dev`. 平台组合 end to end:
+
+| Runbook item | Result | Evidence |
+|---|---|---|
+| 2 插件开关 | **Pass** | five core.* plugins listed 可用; disable/enable toggles exercised ×10 (all audited allowed) |
+| 3 停用门禁联动 | **Pass** | core.ai_collaboration disabled → data.export proposal refused (typed PluginDisabled, audited denial); re-enabled → invocation runs |
+| 4 角色档案→组合 | **Pass** | profile rtrtrytty created; composition generated 基于角色档案; compositions scoped to actor + workspace |
+| 5 跨工作区隔离 | **Pass** | additional workspaces created (defect #1 — creation form hidden after first run — fixed `9a9d4fa`); plugin states/profiles/compositions scoped per workspace |
+| Persistence (G19) | **Pass** | plugin states/profiles/compositions persist across restarts (live-DB probe) |
+
+**Defect found and fixed during the run:** #1 workspace creation form (`9a9d4fa`, recorded in the E4 report).

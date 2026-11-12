@@ -55,6 +55,8 @@ Command-level evidence baseline at review time: 62 tests passing with `--no-fail
 
 ### 5.1 Windowed run record (2026-11-10, Windows, toolchain 1.98.1, branch feat/e2-work-management)
 
+> **更正（2026-11-13）：** E7 窗口化运行发现的 serde 大小写横切缺陷（见 [E4 报告 §5.1](E4-engineering-evidence-report.md)）回溯影响本阶段的 UI 状态推进路径——本报告记录的"通过"以当时可观察证据为准，缺陷已于 2026-11-13 修复并在 E4–E7 联合运行中重新验证。
+
 Executed via `pnpm exec tauri dev`. Two startup/UX defects were found and fixed during the run
 (`574a9cd` migration checksums made line-ending invariant with legacy ledger reconciliation —
 git autocrlf had rewritten working-tree file endings between checkouts and the raw-bytes hash

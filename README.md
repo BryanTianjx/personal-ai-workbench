@@ -51,6 +51,8 @@ Alpha 0.1 起交付与验收目标为 Windows（Windows-only，见 ADR-021）；
 
 ## 项目状态
 
+> **Gate E 窗口化验收（2026-11-13）：** E4/E5/E6/E7 四个里程碑的人工窗口化运行已在 Windows（toolchain 1.98.1，main @ 1b74b64→7217b30）完成，全部 runbook 项通过（DB 级证据核验）；运行中发现并修复 6 个缺陷（工作区创建入口、导出刷新、授权面板、审核状态链、serde 大小写横切、关联可见性——见各证据报告运行记录）。
+
 - **E0.2.2.3 Final Documentation Remediation & Freeze Gate：** Completed as documentation/design baseline only; software implementation and runtime verification are not implied.
 - **E0.3：** Architecture Consolidation & Engineering Readiness — E0.3.1 review and E0.3.2 ratification completed on 2026-11-08 (work delivered on docs/e0.3-architecture-consolidation, merged into main; branch deleted). ADR-017～020 are Accepted as the design baseline; implementation remains Not Implemented and verification Not Verified.
 - **E1：** Engineering skeleton and first Windows vertical slice — work packages E1-01…E1-10 implemented and merged to main with automated evidence (see [E1 engineering evidence report](docs/04-quality/E1-engineering-evidence-report.md); §5.1 records the Gate E windowed run: items 1–3 pass, offline check deferred, UI workspace-picker gap logged to E2 and repaired there).

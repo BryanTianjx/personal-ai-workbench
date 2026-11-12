@@ -54,6 +54,16 @@ E4-03 重放注记：commands.rs 曾因 awk 循环内重写文件而截断损毁
 6. Offline + restart: same as E2/E3 runbook items (offline remains the owner's standing deferred item).
 7. Record OS/toolchain/commit + pass-fail per item as the human acceptance record (Gate F).
 
-### 5.1 Windowed run record
+### 5.1 Windowed run record (2026-11-13, Windows, toolchain 1.98.1, main @ 1b74b64→7217b30)
 
-_Pending — owner to record._
+Executed via `pnpm tauri dev`. 学习区块 end to end: roadmap/plan/item creation (learn-test→plan-test, + exploratory roadmaps), knowledge references, **Agent 协作 low-risk invocation ×4 Completed with full attempt trail**. Two run defects found and fixed during the run:
+
+| Runbook item | Result | Notes |
+|---|---|---|
+| 1–4 学习区块 (roadmap/plan/item/link) | **Pass** after `4fd30c9` | 添加学习项 initially silent-failed — windowed-run defect #5 (serde casing, cross-cutting; see below); after the fix the item row renders with 关联项目/生成任务/Session controls. Item→project linkage initially invisible — defect #6 fixed `7217b30` (confirmation notice + persistent 已关联项目 display); DB probe confirmed links were created correctly both times |
+| 5 生成任务 | **Pass** | CreateTaskForLearningItem surfaced a Work Management task |
+| 6 Sessions append-only | **Pass** | Session 5555888 recorded and rendered |
+| 8 知识引用 CRUD + availability | **Pass** after `4fd30c9` | The availability cycle was broken by the same serde casing defect; fixed in the same commit |
+| Cross-workspace isolation | **Pass** | Additional workspaces created (defect #1 — creation form hidden after first run — fixed `9a9d4fa`); data scoped per workspace |
+
+**Defect #5 (cross-cutting, `4fd30c9`):** every enum crossing the Tauri IPC boundary failed lowercase deserialization (serde derives matched variant names; the UI and schema CHECKs use lowercase). This silently broke 添加学习项 and all UI status transitions/availability cycles back to the E2-era UI. Fixed with `#[serde(rename_all = "snake_case")]` on the twelve lowercase-convention enums; probed before/after; 167 tests green.
