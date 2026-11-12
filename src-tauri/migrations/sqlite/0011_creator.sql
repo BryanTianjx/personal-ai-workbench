@@ -25,7 +25,7 @@ CREATE TABLE creator_drafts (
     topic_id           TEXT NOT NULL,
     title              TEXT NOT NULL CHECK (length(title) > 0 AND length(title) <= 200),
     current_version_no INTEGER NOT NULL CHECK (current_version_no >= 0),
-    status             TEXT NOT NULL CHECK (status IN ('Writing','InReview','Approved')),
+    status             TEXT NOT NULL CHECK (status IN ('Writing','InReview','Approved','Published')),
     created_at         INTEGER NOT NULL,
     updated_at         INTEGER NOT NULL,
     UNIQUE (id, workspace_id),

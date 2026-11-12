@@ -134,6 +134,8 @@ fn local_policy(action: &ProtectedAction) -> Result<(), AuthorizationError> {
         | ProtectedAction::CreateCreatorDraft { .. }
         | ProtectedAction::UpdateCreatorDraft { .. }
         | ProtectedAction::ReviewCreatorDraft { .. }
+        | ProtectedAction::CreatePublishRecord { .. }
+        | ProtectedAction::RecordProjectRetrospective { .. }
         | ProtectedAction::PurgeExpiredData => Ok(()),
         // The pipeline identity is reserved for agent subjects; the human
         // owner's concrete commands carry their own actions.

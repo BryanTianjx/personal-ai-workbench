@@ -98,6 +98,13 @@ type LearningSession = {
   next_step: string | null;
   occurred_at: number;
 };
+type ProjectRetrospective = {
+  id: string;
+  workspace_id: string;
+  project_id: string;
+  summary: string;
+  learning_session_refs: string[];
+};
 type KnowledgeRef = {
   id: string;
   workspace_id: string;
@@ -233,7 +240,7 @@ type CreatorDraft = {
   topic_id: string;
   title: string;
   current_version_no: number;
-  status: "Writing" | "InReview" | "Approved";
+  status: "Writing" | "InReview" | "Approved" | "Published";
 };
 type CreatorDraftReview = {
   id: string;
@@ -358,6 +365,11 @@ export default function App() {
   const [topicTitle, setTopicTitle] = useState("");
   const [draftTitle, setDraftTitle] = useState("");
   const [draftBody, setDraftBody] = useState("");
+  // E6 第二批: publish records + project retrospectives.
+  const [retroProject, setRetroProject] = useState<string>("");
+  const [retroSummary, setRetroSummary] = useState("");
+  const [retroSession, setRetroSession] = useState<string>("");
+  const [retrospectives, setRetrospectives] = useState<ProjectRetrospective[]>([]);
 
   const fail = (e: unknown) => setNotice(describe(e));
 
@@ -454,13 +466,22 @@ export default function App() {
     invoke<LearningGapProposal[]>("list_learning_gaps", { workspaceId, status: null })
       .then((r) => setLearningGaps(r))
       .catch(fail);
+    // E6 第二批: retrospectives per project (default first project).
+    if (projects.length > 0) {
+      const pid = retroProject || projects[0].id;
+      invoke<ProjectRetrospective[]>("list_retrospectives", { workspaceId, projectId: pid })
+        .then((r) => setRetrospectives(r))
+        .catch(fail);
+    } else {
+      setRetrospectives([]);
+    }
     invoke<CreatorTopic[]>("list_creator_topics", { workspaceId })
       .then((r) => setCreatorTopics(r))
       .catch(fail);
     invoke<CreatorDraft[]>("list_creator_drafts", { workspaceId })
       .then((r) => setCreatorDrafts(r))
       .catch(fail);
-  }, [workspaceId]);
+  }, [workspaceId, retroProject]);
 
   useEffect(() => {
     reloadWorkspaces();
@@ -994,6 +1015,40 @@ export default function App() {
         }),
       reloadAll,
     );
+
+  // ---- E6 第二批: publish records + project retrospectives ----
+  const recordPublish = (d: CreatorDraft, channel: "wechat" | "manual") =>
+    run(async () => {
+      const draft = await invoke<CreatorDraft>("record_publish", {
+        workspaceId,
+        draftId: d.id,
+        channel,
+        locator: null,
+        notes: null,
+      });
+      setNotice(`已记录发布：${draft.title} v${draft.current_version_no}（${channel}，手动录入）`);
+    }, reloadAll);
+
+  const recordRetrospective = () =>
+    run(async () => {
+      const projectId = retroProject || projects[0]?.id;
+      if (!projectId) {
+        setNotice("请先创建一个项目。");
+        return;
+      }
+      const sessions = retroSession ? [retroSession] : [];
+      const retro = await invoke<ProjectRetrospective>("record_retrospective", {
+        workspaceId,
+        projectId,
+        summary: retroSummary.trim(),
+        sessionIds: sessions,
+      });
+      setNotice(
+        `复盘已记录${retro.learning_session_refs.length > 0 ? `（回流学习记录 ${retro.learning_session_refs.length} 条）` : ""}`,
+      );
+      setRetroSummary("");
+      setRetroSession("");
+    }, reloadAll);
 
   // ---- Operation queue actions (E3-04) ----
   const cancelOperation = (op: OperationRow) =>
@@ -1888,13 +1943,82 @@ export default function App() {
                     </button>
                   )}
                   {d.status === "Approved" && (
-                    <button
-                      onClick={() => transitionDraft(d, "Writing")}
-                      disabled={busy}
-                    >
-                      开启新版本
-                    </button>
+                    <>
+                      <button
+                        onClick={() => transitionDraft(d, "Writing")}
+                        disabled={busy}
+                      >
+                        开启新版本
+                      </button>{" "}
+                      <button
+                        onClick={() => recordPublish(d, "wechat")}
+                        disabled={busy}
+                      >
+                        记录发布（公众号，手动录入）
+                      </button>{" "}
+                      <button
+                        onClick={() => recordPublish(d, "manual")}
+                        disabled={busy}
+                      >
+                        记录发布（其他渠道）
+                      </button>
+                    </>
                   )}
+                  {d.status === "Published" && <span>已发布</span>}
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          {/* Project retrospective with learning backflow (E6 第二批) */}
+          <section>
+            <h2>项目复盘</h2>
+            <p>
+              学习产物回流项目复盘：复盘引用的学习记录必须属于已关联本项目的学习条目；
+              记录为追加式，事件版本化；发布与复盘均为手动录入，不自动发布。
+            </p>
+            <select
+              value={retroProject || projects[0]?.id || ""}
+              onChange={(e) => setRetroProject(e.target.value)}
+              disabled={busy || projects.length === 0}
+            >
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+            <input
+              value={retroSummary}
+              onChange={(e) => setRetroSummary(e.target.value)}
+              placeholder="复盘结论（1–2000 字符）"
+              disabled={busy}
+            />
+            <select
+              value={retroSession}
+              onChange={(e) => setRetroSession(e.target.value)}
+              disabled={busy}
+            >
+              <option value="">不引用学习记录</option>
+              {learningSessions.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.summary || s.id.slice(0, 8)}
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={recordRetrospective}
+              disabled={busy || !retroSummary.trim() || projects.length === 0}
+            >
+              记录复盘
+            </button>
+            <ul>
+              {retrospectives.length === 0 && <li>暂无复盘记录。</li>}
+              {retrospectives.map((r) => (
+                <li key={r.id}>
+                  <strong>{r.summary}</strong>
+                  {r.learning_session_refs.length > 0 &&
+                    ` · 回流学习记录 ${r.learning_session_refs.length} 条`}
                 </li>
               ))}
             </ul>

@@ -215,3 +215,24 @@ pub trait GapProposalRepository {
         gap: &paw_domain::learning::LearningGapProposal,
     ) -> Result<(), LearningRepositoryError>;
 }
+
+/// Project retrospective persistence (E6 第二批; learning-product backflow
+/// into project reviews, PRD §3.8/§5.3). `record` persists the retrospective
+/// plus its learning-session backflow links atomically and emits the
+/// versioned `ProjectRetrospectiveRecorded.v1` outbox event (ADR-020).
+pub trait RetrospectiveRepository {
+    fn record_retrospective(
+        &self,
+        retrospective: &paw_domain::work_management::ProjectRetrospective,
+    ) -> Result<(), LearningRepositoryError>;
+    fn get_retrospective(
+        &self,
+        id: &paw_domain::work_management::RetrospectiveId,
+        workspace_id: &paw_domain::work_management::WorkspaceId,
+    ) -> Result<paw_domain::work_management::ProjectRetrospective, LearningRepositoryError>;
+    fn list_retrospectives(
+        &self,
+        workspace_id: &paw_domain::work_management::WorkspaceId,
+        project_id: &paw_domain::work_management::ProjectId,
+    ) -> Result<Vec<paw_domain::work_management::ProjectRetrospective>, LearningRepositoryError>;
+}

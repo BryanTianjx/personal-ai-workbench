@@ -140,12 +140,14 @@ impl CreatorTopic {
 }
 
 /// Draft lifecycle (草稿/审核): writing → in review → approved (for the
-/// reviewed version) or back to writing after rejection.
+/// reviewed version) or back to writing after rejection; a publish record
+/// moves the draft to the terminal `Published` state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DraftStatus {
     Writing,
     InReview,
     Approved,
+    Published,
 }
 
 impl DraftStatus {
@@ -154,6 +156,7 @@ impl DraftStatus {
             Self::Writing => "Writing",
             Self::InReview => "InReview",
             Self::Approved => "Approved",
+            Self::Published => "Published",
         }
     }
 
@@ -162,12 +165,14 @@ impl DraftStatus {
             "Writing" => Self::Writing,
             "InReview" => Self::InReview,
             "Approved" => Self::Approved,
+            "Published" => Self::Published,
             _ => return None,
         })
     }
 
     /// Writing → InReview; InReview → Approved | Writing (rejection or
-    /// revision); Approved → Writing (a new version starts a new cycle).
+    /// revision); Approved → Writing (a new version starts a new cycle) or
+    /// Published (terminal, via a publish record).
     pub fn can_transition_to(self, to: Self) -> bool {
         matches!(
             (self, to),
@@ -175,6 +180,7 @@ impl DraftStatus {
                 | (Self::InReview, Self::Approved)
                 | (Self::InReview, Self::Writing)
                 | (Self::Approved, Self::Writing)
+                | (Self::Approved, Self::Published)
         )
     }
 }
@@ -434,5 +440,81 @@ mod tests {
             )
             .is_err()
         );
+    }
+}
+
+/// A publish record (发布记录): the manual fact that an approved version
+/// went out on an external channel. Publishing automation stays gated
+/// (feature-matrix note 4) — this record is user-entered evidence of an
+/// external effect, never an automated action. The record binds one exact
+/// draft version, mirroring the review discipline.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CreatorPublishRecord {
+    pub id: CreatorPublishRecordId,
+    pub workspace_id: WorkspaceId,
+    pub draft_id: CreatorDraftId,
+    pub version_no: u32,
+    pub channel: PublishChannel,
+    /// External locator (URL / article id) as opaque text.
+    pub locator: Option<String>,
+    pub notes: Option<String>,
+}
+
+opaque_id!(
+    CreatorPublishRecordId,
+    "Opaque creator publish record identifier (UUIDv7 text)."
+);
+
+/// Publication channels. WeChat is the PRD's named channel; others exist
+/// for manual records of off-platform publishing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PublishChannel {
+    WeChat,
+    Manual,
+}
+
+impl PublishChannel {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::WeChat => "wechat",
+            Self::Manual => "manual",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        Some(match value {
+            "wechat" => Self::WeChat,
+            "manual" => Self::Manual,
+            _ => return None,
+        })
+    }
+}
+
+impl CreatorPublishRecord {
+    pub fn new(
+        id: CreatorPublishRecordId,
+        workspace_id: WorkspaceId,
+        draft_id: CreatorDraftId,
+        version_no: u32,
+        channel: PublishChannel,
+        locator: Option<&str>,
+        notes: Option<&str>,
+    ) -> Result<Self, CreatorError> {
+        if version_no == 0 {
+            return Err(CreatorError::VersionNotFound);
+        }
+        Ok(Self {
+            id,
+            workspace_id,
+            draft_id,
+            version_no,
+            channel,
+            locator: crate::work_management::validate_name(locator.unwrap_or(""), 500)
+                .map(|l| if l.is_empty() { None } else { Some(l) })
+                .or::<CreatorError>(Ok(None))?,
+            notes: crate::work_management::validate_name(notes.unwrap_or(""), 500)
+                .map(|n| if n.is_empty() { None } else { Some(n) })
+                .or::<CreatorError>(Ok(None))?,
+        })
     }
 }
