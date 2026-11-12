@@ -368,6 +368,10 @@ export default function App() {
   const [agentName, setAgentName] = useState("");
   const [propAgent, setPropAgent] = useState<string>("");
   const [propCapability, setPropCapability] = useState("work_management.task.create");
+  // E5: grant management (human-only admin action — approval never
+  // expands grants, ADR-029 §4.3).
+  const [grantCapability, setGrantCapability] = useState("work_management.task.create");
+  const [grants, setGrants] = useState<Array<{ id: string; subject_id: string; capabilities: string[] }>>([]);
 
   // E6: skills / learning gaps / creator pipeline state.
   const [skills, setSkills] = useState<Skill[]>([]);
@@ -509,6 +513,12 @@ export default function App() {
       .catch(fail);
     invoke<RoleProfile[]>("list_role_profiles", { workspaceId })
       .then((r) => setRoleProfiles(r))
+      .catch(fail);
+    invoke<Array<{ id: string; subject_id: string; capabilities: string[] }>>(
+      "list_agent_grants",
+      { workspaceId, subjectId: null },
+    )
+      .then((r) => setGrants(r))
       .catch(fail);
     invoke<WorkspaceComposition[]>("list_workspace_compositions", { workspaceId })
       .then((r) => setCompositions(r))
@@ -849,6 +859,29 @@ export default function App() {
           registrationId: id,
           newStatus,
         }),
+      reloadAll,
+    );
+
+  const grantCapabilityToAgent = () => {
+    const registration = agents.find((a) => a.id === propAgent) ?? agents[0];
+    if (!registration) {
+      setNotice("请先注册一个 agent。");
+      return;
+    }
+    run(async () => {
+      const grantId = await invoke<string>("create_agent_grant", {
+        workspaceId,
+        subjectId: `agent:${registration.id}`,
+        capabilities: [grantCapability],
+        ttlMs: null,
+      });
+      setNotice(`已授权 ${registration.display_name} → ${grantCapability}（grant ${grantId.slice(0, 8)}…，可撤销）`);
+    }, reloadAll);
+  };
+
+  const revokeGrant = (grantId: string) =>
+    run(
+      () => invoke<void>("revoke_agent_grant", { workspaceId, grantId }),
       reloadAll,
     );
 
@@ -1781,11 +1814,44 @@ export default function App() {
               <option value="work_management.task.create">
                 work_management.task.create（低风险，需 grant）
               </option>
+              <option value="data.export">data.export（中风险，需 grant）</option>
               <option value="data.purge">data.purge（高风险，需审批 + grant）</option>
             </select>
             <button onClick={proposeInvocation} disabled={busy || agents.length === 0}>
               发起调用
             </button>
+            <h4>授权管理（人工管理动作；批准永不扩大授权）</h4>
+            <select
+              value={grantCapability}
+              onChange={(e) => setGrantCapability(e.target.value)}
+              disabled={busy || agents.length === 0}
+            >
+              <option value="work_management.task.create">work_management.task.create</option>
+              <option value="work_management.task.update">work_management.task.update</option>
+              <option value="work_management.task.delete">work_management.task.delete</option>
+              <option value="learning.item.create">learning.item.create</option>
+              <option value="knowledge.ref.create">knowledge.ref.create</option>
+              <option value="knowledge.ref.update">knowledge.ref.update</option>
+              <option value="data.export">data.export</option>
+              <option value="data.purge">data.purge（高风险）</option>
+            </select>
+            <button
+              onClick={grantCapabilityToAgent}
+              disabled={busy || agents.length === 0}
+            >
+              授予选中 agent
+            </button>
+            <ul>
+              {grants.length === 0 && <li>暂无 grant。</li>}
+              {grants.map((g) => (
+                <li key={g.id}>
+                  {g.subject_id} → {g.capabilities.join("、")}{" "}
+                  <button onClick={() => revokeGrant(g.id)} disabled={busy}>
+                    撤销
+                  </button>
+                </li>
+              ))}
+            </ul>
             {pendingApproval && (
               <div>
                 <h4>待审批（绑定精确计划）</h4>
