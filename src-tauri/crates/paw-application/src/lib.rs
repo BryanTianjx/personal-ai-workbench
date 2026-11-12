@@ -25,6 +25,9 @@ pub use paw_domain::learning::{
     GapProposalStatus, Item, ItemId, ItemKind, ItemStatus, LearningGapProposal,
     LearningGapProposalId, Plan, PlanId, PlanStatus, Roadmap, RoadmapId, Session, SessionId,
 };
+pub use paw_domain::platform::{
+    CompositionError, CompositionId, ProfileId, RoleProfile, WorkspaceComposition,
+};
 pub use paw_domain::skills::{
     Assessment, AssessmentId, Confidence, EvidenceKind, EvidenceSourceKind, Skill, SkillEvidence,
     SkillEvidenceId, SkillId, SkillsError,
