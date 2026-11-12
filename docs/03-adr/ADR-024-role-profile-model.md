@@ -2,8 +2,8 @@
 
 - **Status:** Accepted (R1)
 - **Decision status:** Accepted (repository owner decision, 2026-11-12; R1 clarifications are normative; implementation and verification remain separate gates)
-- **Implementation status:** Not Implemented
-- **Verification status:** Not Verified
+- **Implementation Status:** Not Implemented — no `RoleProfile` type, storage or template lifecycle exists; profiles appear only as advisory metadata in the E5 specification.
+- **Verification Status:** Not Verified — profile switching, import/export sanitisation and safe-fallback behaviour are untested because no implementation exists.
 - **Date:** 2026-11-11 (accepted 2026-11-12)
 - **Scope:** Role templates and persona-based experience
 - **Related:** ADR-003, ADR-005, ADR-013, ADR-017, ADR-020
@@ -27,7 +27,18 @@ Different users and duties need different plugin combinations, navigation, dashb
 - UI must distinguish “feature is configured” from “action is authorized”.
 - The system must compute visible actions from both composition preferences and current backend policy; the latter remains authoritative.
 
-## Required validation
+## Risks and controls
+
+Risk register carried over from the [R1 cross-ADR review](../04-quality/ADR-023-029-R1-cross-adr-review.md) §3 (risk-control column) and §7 (blocking conditions); the controls are normative per the owner's acceptance conditions.
+
+| Risk | Control |
+|---|---|
+| Role Profile is used as an authorization role or grant source | Profile carries experience references only; every protected side effect is authorized by backend policy (ADR-017, ADR-029), and profile switching must not alter effective grants |
+| An imported profile carries grants, secrets or approval tokens | Import/export schema validation, forbidden security fields stripped, imported values treated as untrusted configuration |
+| A stale or unsupported profile version breaks the UI context | Deterministic handling of missing/stale/malformed profiles with fallback to a safe default |
+| A profile edit mutates a Data Workspace or domain record | Profile updates never write domain tables; applying a template only derives user-owned composition settings (ADR-025) |
+
+## Validation required
 
 Role switching does not alter grants; unauthorized actions remain denied through direct command invocation; profile export/import contains no secrets or permission grants.
 

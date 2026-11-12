@@ -45,7 +45,7 @@ ADR-007～012 未在当前基线中发现，不因新增 ADR 而补造或重新�
 
 每份 ADR 至少包含背景、决策驱动因素、候选方案（如适用）、决策、后果、显式风险与缓解措施、验证要求、决策状态、实施状态和验证状态。改变已接受的架构决策时，新增 ADR，不覆盖历史记录。
 
-E0.3.2 已于 2026-11-08 批准 ADR-017～020。ADR-022 已于 2026-11-12 由 owner 批准为 Accepted（条件：真实 provider 启用仍以版本化兼容测试与操作手册为前置，批准不等于实现）。**ADR-023～029 R1 已于 2026-11-12 由仓库 owner 逐份批准为 Accepted**（决策记录见 [owner-review-checklist](../architecture/adr-023-029-hermes-task-package/owner-review-checklist.md) 与 [跨 ADR 评审报告 §9](../04-quality/ADR-023-029-R1-cross-adr-review.md)；条件为 R1 评审报告 §3/§7 的边界与不变量约束）。Accepted 仅表示设计决策批准：各 ADR 的 Implementation / Verification 状态仍为 Not Implemented / Not Verified，实现规格与实现开工是独立门禁。
+E0.3.2 已于 2026-11-08 批准 ADR-017～020。ADR-022 已于 2026-11-12 由 owner 批准为 Accepted（条件：真实 provider 启用仍以版本化兼容测试与操作手册为前置，批准不等于实现）。**ADR-023～029 R1 已于 2026-11-12 由仓库 owner 逐份批准为 Accepted**（决策记录见 [owner-review-checklist](../architecture/adr-023-029-hermes-task-package/owner-review-checklist.md) 与 [跨 ADR 评审报告 §9](../04-quality/ADR-023-029-R1-cross-adr-review.md)；条件为 R1 评审报告 §3/§7 的边界与不变量约束）。Accepted 仅表示设计决策批准，实现与验证状态逐份记录在各 ADR 头部，不因批准而改变。E5 交付后：ADR-026 / ADR-029 为 **Implemented / Partially Verified**（自动证据见 [E5 工程证据报告](../04-quality/E5-engineering-evidence-report.md)；Gate E 窗口化运行与人工验收尚未完成）；ADR-023 / ADR-024 / ADR-025 / ADR-027 / ADR-028 仍为 **Not Implemented / Not Verified**（E7 阶段范围）。
 
 ## Review artifacts
 

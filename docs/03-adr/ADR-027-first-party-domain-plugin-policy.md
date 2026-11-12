@@ -2,8 +2,8 @@
 
 - **Status:** Accepted (R1)
 - **Decision status:** Accepted (repository owner decision, 2026-11-12; R1 clarifications are normative; implementation and verification remain separate gates)
-- **Implementation status:** Not Implemented
-- **Verification status:** Not Verified
+- **Implementation Status:** Not Implemented — no first-party plugin registration exists, so no domain is adopted as a plugin; the Learning & Growth domain (`paw-domain/src/learning.rs`) exists independently of plugin adoption.
+- **Verification Status:** Not Verified — plugin-context validation (ownership, no cross-domain table writes through a registry, unavailable KnowledgeRef behaviour) is untested; no evidence record exists.
 - **Date:** 2026-11-11 (accepted 2026-11-12)
 - **Scope:** First-party domain plugin adoption
 - **Related:** ADR-002, ADR-013, ADR-014, ADR-015, ADR-016, ADR-018, ADR-020
@@ -30,7 +30,18 @@ The product needs role-specific plugin combinations, but existing business domai
 - Plugin Registry cannot mutate learning entities or assessments.
 - Existing cross-domain data contracts remain authoritative.
 
-## Required validation
+## Risks and controls
+
+Risk register carried over from the [R1 cross-ADR review](../04-quality/ADR-023-029-R1-cross-adr-review.md) §3 (risk-control column) and §7 (blocking conditions); the controls are normative per the owner's acceptance conditions.
+
+| Risk | Control |
+|---|---|
+| Pluginization transfers domain ownership to Core | The domain remains owner of entities, invariants, persistence and events; the registry mutates no domain data |
+| Learning & Growth is reduced to a generic tool plugin | Learning stays a first-class domain under ADR-013–016; assessment remains evidence-linked and user-confirmed |
+| Plugin adoption silently expands Alpha/Beta scope | Adoption follows domain readiness and roadmap gates, never a target count |
+| Cross-domain direct table writes | Cross-domain access only through versioned contracts and events (ADR-014, ADR-016, ADR-020) |
+
+## Validation required
 
 Learning domain ownership tests, no cross-domain table writes, evidence provenance, assessment confirmation, unavailable KnowledgeRef behavior, and versioned contract compatibility.
 

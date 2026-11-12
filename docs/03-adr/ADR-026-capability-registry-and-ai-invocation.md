@@ -2,8 +2,8 @@
 
 - **Status:** Accepted (R1)
 - **Decision status:** Accepted (repository owner decision, 2026-11-12; R1 clarifications are normative; implementation and verification remain separate gates)
-- **Implementation status:** Not Implemented
-- **Verification status:** Not Verified
+- **Implementation Status:** Implemented (E5) — capability descriptor model and metadata-only registry (E5-01), grant/authorization v2 (E5-02), Agent registration and execution lifecycle (E5-03), approval binding (E5-04) and the governed invocation pipeline with per-side-effect re-authorization (E5-05) are merged into `main`. Dispatch still runs through the mediated adapter with the fake transport; real provider execution stays gated by ADR-022.
+- **Verification Status:** Partially Verified — automated gates A–D pass (E5 evidence report: full workspace suite, clippy/fmt/build clean at merge; registry returns no callable, default deny, cross-workspace denial, digest binding, per-side-effect recheck, OutcomeUnknown reconciliation). Gate E windowed run, milestone acceptance and any real-provider conformance are **not yet verified**.
 - **Date:** 2026-11-11 (accepted 2026-11-12)
 - **Scope:** Domain capabilities, Agent invocation, adapter boundary
 - **Related:** ADR-004, ADR-017, ADR-018, ADR-019, ADR-020, ADR-022
@@ -30,7 +30,19 @@ Domain plugins need to expose useful business operations to UI, workflows, and A
 - Capability catalog governance and compatibility tests become mandatory.
 - Provider adapters remain replaceable and do not own domain semantics.
 
-## Required validation
+## Risks and controls
+
+Risk register carried over from the [R1 cross-ADR review](../04-quality/ADR-023-029-R1-cross-adr-review.md) §3 (risk-control column) and §7 (blocking conditions); the controls are normative per the owner's acceptance conditions.
+
+| Risk | Control |
+|---|---|
+| The registry degrades into a Service Locator or execution engine | Registry resolves descriptors and versions only and returns no callable; dispatch goes through the owning domain use case and Application Coordination (architecture test, E5-01) |
+| Descriptor metadata is treated as a grant | Descriptors are advisory; effective authorization is evaluated by backend policy immediately before each protected side effect (E5-02) |
+| An Agent reaches repositories or the database directly | Five-layer ownership: Agent subjects reach capabilities only through the governed pipeline (ADR-017, ADR-018) |
+| The provider adapter takes over domain semantics | Adapter limited to protocol translation (ADR-004, ADR-022) |
+| An uncertain external outcome is duplicated by retry | `OutcomeUnknown` with explicit reconciliation and no blind retry (ADR-019, ADR-029) |
+
+## Validation required
 
 Capability schema compatibility, default-deny, cross-workspace denial, approval digest binding, adapter conformance, idempotency, duplicate delivery, OutcomeUnknown reconciliation, and secret redaction.
 

@@ -2,8 +2,8 @@
 
 - **Status:** Accepted (R1)
 - **Decision status:** Accepted (repository owner decision, 2026-11-12; R1 clarifications are normative; implementation and verification remain separate gates)
-- **Implementation status:** Not Implemented
-- **Verification status:** Not Verified
+- **Implementation Status:** Not Implemented — no domain-plugin descriptor, plugin registry or plugin lifecycle orchestration exists in the four crates; only capability descriptors (ADR-026 / E5-01) are implemented. Stage assignment: E7 (V1.0 prerequisite, PAW-INF-007).
+- **Verification Status:** Not Verified — none of the validation requirements below can run yet: there is no descriptor schema, registry or dependency graph to test, and no evidence record exists.
 - **Date:** 2026-11-11 (accepted 2026-11-12)
 - **Scope:** Domain extension model, registration, lifecycle
 - **Related:** ADR-002, ADR-003, ADR-006, ADR-017, ADR-018, ADR-020
@@ -30,7 +30,7 @@ Treating every page as a plugin would fragment the domain model. Introducing arb
 - Static registration is less flexible than dynamic loading but substantially easier to secure and verify.
 - Existing domains can be adopted incrementally; no big-bang rewrite is required.
 
-## Required validation
+## Validation required
 
 Manifest validation, dependency DAG and cycle rejection, API compatibility, disable/data-retention behavior, architecture boundary tests, and startup failure isolation.
 
@@ -55,7 +55,7 @@ Disabling a plugin blocks new invocations and hides its contributions according 
 
 The initial implementation is limited to first-party, statically registered plugins in the existing four-crate modular monolith. No fifth crate, runtime code download, hot unload, marketplace, remote JavaScript, or plugin process is authorized by this ADR. Descriptor serialization, concrete Rust types, contribution APIs and SQL persistence remain implementation-specification work.
 
-## R1 risk controls
+## Risks and controls (R1)
 
 | Risk | Control |
 |---|---|
