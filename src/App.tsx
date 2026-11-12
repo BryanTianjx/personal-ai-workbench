@@ -1069,17 +1069,25 @@ export default function App() {
     );
 
   const submitReview = (d: CreatorDraft, decision: "Approved" | "Rejected") =>
-    run(
-      () =>
-        invoke<CreatorDraftReview>("submit_creator_review", {
-          workspaceId,
-          draftId: d.id,
-          versionNo: d.current_version_no,
-          decision,
-          comment: null,
-        }),
-      reloadAll,
-    );
+    run(async () => {
+      await invoke<CreatorDraftReview>("submit_creator_review", {
+        workspaceId,
+        draftId: d.id,
+        versionNo: d.current_version_no,
+        decision,
+        comment: null,
+      });
+      // 审核是历史记录；状态机由这次链式转移推进（Approved → 已发布候选，
+      // Rejected → 退回写作），发布按钮才会出现。
+      const nextStatus =
+        decision === "Approved" ? ("Approved" as const) : ("Writing" as const);
+      await invoke<CreatorDraft>("transition_creator_draft", {
+        workspaceId,
+        draftId: d.id,
+        newStatus: nextStatus,
+      });
+      setNotice(`审核完成：v${d.current_version_no} ${decision === "Approved" ? "通过" : "驳回"}`);
+    }, reloadAll);
 
   // ---- E6 第二批: publish records + project retrospectives ----
   const recordPublish = (d: CreatorDraft, channel: "wechat" | "manual") =>
