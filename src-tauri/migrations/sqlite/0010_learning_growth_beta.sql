@@ -16,6 +16,7 @@ CREATE TABLE skills (
     scale_version  INTEGER NOT NULL CHECK (scale_version >= 1),
     notes          TEXT,
     CHECK (notes IS NULL OR length(notes) <= 500),
+    UNIQUE (id, workspace_id),
     FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE RESTRICT
 );
 CREATE INDEX idx_skills_workspace_category ON skills(workspace_id, category);
@@ -36,6 +37,7 @@ CREATE TABLE skill_evidence (
     summary      TEXT,
     created_at   INTEGER NOT NULL,
     CHECK (summary IS NULL OR length(summary) <= 500),
+    UNIQUE (id, workspace_id),
     FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE RESTRICT,
     FOREIGN KEY (skill_id, workspace_id)
         REFERENCES skills(id, workspace_id) ON DELETE RESTRICT
@@ -54,6 +56,7 @@ CREATE TABLE learning_assessments (
     rationale      TEXT,
     created_at     INTEGER NOT NULL,
     CHECK (rationale IS NULL OR length(rationale) <= 500),
+    UNIQUE (id, workspace_id),
     FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE RESTRICT,
     FOREIGN KEY (skill_id, workspace_id)
         REFERENCES skills(id, workspace_id) ON DELETE RESTRICT
@@ -84,6 +87,7 @@ CREATE TABLE learning_gap_proposals (
     confirmed_item_id  TEXT,
     created_at         INTEGER NOT NULL,
     updated_at         INTEGER NOT NULL,
+    UNIQUE (id, workspace_id),
     FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE RESTRICT,
     FOREIGN KEY (project_id, workspace_id)
         REFERENCES projects(id, workspace_id) ON DELETE RESTRICT,

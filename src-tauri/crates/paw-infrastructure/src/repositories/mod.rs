@@ -9,8 +9,11 @@
 pub mod agent_governance;
 pub mod area_repository;
 pub mod attachment_repository;
+pub mod creator;
+pub mod gap_proposals;
 pub mod goal_repository;
 pub mod knowledge_repository;
 pub mod learning_repository;
+pub mod skills;
 pub mod task_repository;
 pub mod workspace_repository;
