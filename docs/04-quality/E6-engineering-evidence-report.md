@@ -56,3 +56,14 @@
 ### 6.1 Windowed run record
 
 _Pending — owner to record._
+
+## 7. Second batch (Beta 0.5 第二批, same stage branch family)
+
+Work packages E6-05/06 implemented on feat/e6b-beta05-second and merged:
+
+| WP | Deliverable | Automated evidence | Status |
+|---|---|---|---|
+| E6-05 | Creator publish records (发布辅助) | `CreatorPublishRecord` bound to exact draft versions; DraftStatus gains terminal `Published` (0011 CHECK extended); `record_publish` validates the state-machine transition BEFORE inserting — a republish of a Published draft never inserts a second record; publishing automation stays gated (feature-matrix note 4); e2e asserts terminal republish refusal + manual-fact-only discipline | Done |
+| E6-06 | Project retrospectives with learning backflow (PAW-LG-007 closure, PRD §3.8/§5.3) | `ProjectRetrospective` (Work Management domain, append-only); backflow is REAL — every referenced learning session must belong to an item linked to the same project (RESTRICT FKs + application validation through the item→project chain); `ProjectRetrospectiveRecorded.v1` emitted atomically with ids-only payload (ADR-020); migration 0012; e2e asserts unlinked-session refusal, exactly-one event, cross-workspace invisibility | Done |
+
+Second-batch baseline: **156 tests** passing --no-fail-fast, clippy/fmt/pnpm clean. Migration ledger fixtures 11→12.
