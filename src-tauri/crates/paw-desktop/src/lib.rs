@@ -148,6 +148,7 @@ pub fn run() {
             commands::list_publish_records,
             commands::record_retrospective,
             commands::list_retrospectives,
+            commands::list_item_project_links,
             commands::set_plugin_disabled,
             commands::list_plugin_states,
             commands::create_role_profile,

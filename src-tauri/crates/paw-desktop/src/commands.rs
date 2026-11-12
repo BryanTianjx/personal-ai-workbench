@@ -728,6 +728,32 @@ impl WorkManagementApi {
         .map_err(CommandError::from)
     }
 
+    /// Linked project names per item (read-only, workspace-scoped) — the
+    /// visibility the 关联项目 action-select needs (E6b windowed-run fix).
+    pub fn list_item_project_links(
+        &self,
+        workspace_id: &WorkspaceId,
+    ) -> Result<Vec<(String, String)>, CommandError> {
+        let mut stmt = self
+            .coordination
+            .prepare(
+                "SELECT i.title, p.name FROM learning_item_projects lp
+                 JOIN learning_items i ON i.id = lp.item_id AND i.workspace_id = lp.workspace_id
+                 JOIN projects p ON p.id = lp.project_id AND p.workspace_id = lp.workspace_id
+                 WHERE lp.workspace_id = ?1
+                 ORDER BY p.name, i.title",
+            )
+            .map_err(|_| CommandError::Unexpected)?;
+        let rows = stmt
+            .query_map(rusqlite::params![workspace_id.as_str()], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .map_err(|_| CommandError::Unexpected)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|_| CommandError::Unexpected)?;
+        Ok(rows)
+    }
+
     /// PAW-LG-006 (CreateTaskForLearningItem semantics): create a Work
     /// Management task for a learning item and record the action-step link.
     /// The orchestration lives in `learning::item` (ADR-017): the task is
@@ -4662,4 +4688,15 @@ pub fn list_workspace_compositions(
         .lock()
         .expect("WorkManagementApi mutex must not be poisoned");
     api.list_workspace_compositions(&workspace_id)
+}
+
+#[tauri::command]
+pub fn list_item_project_links(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+) -> Result<Vec<(String, String)>, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.list_item_project_links(&workspace_id)
 }

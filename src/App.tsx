@@ -391,6 +391,7 @@ export default function App() {
   const [retroSummary, setRetroSummary] = useState("");
   const [retroSession, setRetroSession] = useState<string>("");
   const [retrospectives, setRetrospectives] = useState<ProjectRetrospective[]>([]);
+  const [itemProjectLinks, setItemProjectLinks] = useState<Array<[string, string]>>([]);
   // E7: platform composition state (插件开关 / 角色档案 / 工作区组合).
   const [pluginStates, setPluginStates] = useState<Array<[string, boolean]>>([]);
   const [roleProfiles, setRoleProfiles] = useState<RoleProfile[]>([]);
@@ -501,6 +502,10 @@ export default function App() {
     } else {
       setRetrospectives([]);
     }
+    // Item→project links (visible linkage for the 关联项目 action-select).
+    invoke<Array<[string, string]>>("list_item_project_links", { workspaceId })
+      .then((r) => setItemProjectLinks(r))
+      .catch(fail);
     invoke<CreatorTopic[]>("list_creator_topics", { workspaceId })
       .then((r) => setCreatorTopics(r))
       .catch(fail);
@@ -751,15 +756,15 @@ export default function App() {
     );
 
   const linkItemProject = (item: LearningItem, projectId: string) =>
-    run(
-      () =>
-        invoke<void>("link_item_to_project", {
-          workspaceId,
-          itemId: item.id,
-          projectId,
-        }),
-      reloadAll,
-    );
+    run(async () => {
+      await invoke<void>("link_item_to_project", {
+        workspaceId,
+        itemId: item.id,
+        projectId,
+      });
+      const projectName = projects.find((p) => p.id === projectId)?.name ?? projectId;
+      setNotice(`已关联学习条目「${item.title}」 ↔ 项目「${projectName}」`);
+    }, reloadAll);
 
   const createTaskForItem = (item: LearningItem) =>
     run(
@@ -1675,6 +1680,16 @@ export default function App() {
                                       >
                                         生成任务
                                       </button>
+                                      {(() => {
+                                        const linked = itemProjectLinks
+                                          .filter(([, linkedItemTitle]) => linkedItemTitle === i.title)
+                                          .map(([, projectName]) => projectName);
+                                        return linked.length > 0 ? (
+                                          <div>
+                                            已关联项目：{linked.join("、")}
+                                          </div>
+                                        ) : null;
+                                      })()}
                                       <div>
                                         Session：
                                         <input
