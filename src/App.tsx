@@ -1154,6 +1154,7 @@ export default function App() {
     run(async () => {
       const path = await invoke<string>("export_operations", { workspaceId });
       setNotice(`操作历史已导出：${path}`);
+      reloadAll();
     });
 
   const purgeExpired = () =>
