@@ -444,3 +444,83 @@ impl CreatorDraftRepository for SqliteCreatorDraftRepository {
         .map_err(store_error)
     }
 }
+
+// ---------------------------------------------------------------------------
+// Publish records (E6 第二批: 发布辅助 — manual facts, automation gated)
+// ---------------------------------------------------------------------------
+
+pub struct SqliteCreatorPublishRecordRepository {
+    conn: rusqlite::Connection,
+}
+
+impl SqliteCreatorPublishRecordRepository {
+    pub fn open(path: &Path) -> Result<Self, Error> {
+        Ok(Self {
+            conn: sqlite::open(path)?,
+        })
+    }
+}
+
+fn row_to_publish_record(
+    row: &rusqlite::Row<'_>,
+) -> Result<paw_domain::creator::CreatorPublishRecord, RepoError> {
+    let channel: String = row.get("channel")?;
+    Ok(paw_domain::creator::CreatorPublishRecord {
+        id: paw_domain::creator::CreatorPublishRecordId::new(row.get::<_, String>("id")?)?,
+        workspace_id: WorkspaceId::new(row.get::<_, String>("workspace_id")?)?,
+        draft_id: CreatorDraftId::new(row.get::<_, String>("draft_id")?)?,
+        version_no: row.get::<_, i64>("version_no")? as u32,
+        channel: paw_domain::creator::PublishChannel::parse(&channel)
+            .expect("publish channel values are constrained by the schema CHECK"),
+        locator: row.get("locator")?,
+        notes: row.get("notes")?,
+    })
+}
+
+impl paw_application::ports::creator_repository::CreatorPublishRecordRepository
+    for SqliteCreatorPublishRecordRepository
+{
+    fn insert_publish_record(
+        &self,
+        record: &paw_domain::creator::CreatorPublishRecord,
+    ) -> Result<(), CreatorStoreError> {
+        let now = now()?;
+        self.conn
+            .execute(
+                "INSERT INTO creator_publish_records
+                 (id, workspace_id, draft_id, version_no, channel, locator, notes, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                rusqlite::params![
+                    record.id.as_str(),
+                    record.workspace_id.as_str(),
+                    record.draft_id.as_str(),
+                    record.version_no,
+                    record.channel.as_str(),
+                    record.locator,
+                    record.notes,
+                    now,
+                ],
+            )
+            .map_err(RepoError::Sql)
+            .map_err(store_error)?;
+        Ok(())
+    }
+
+    fn list_publish_records(
+        &self,
+        workspace_id: &WorkspaceId,
+        draft_id: &CreatorDraftId,
+    ) -> Result<Vec<paw_domain::creator::CreatorPublishRecord>, CreatorStoreError> {
+        let stmt = self.conn.prepare(
+            "SELECT id, workspace_id, draft_id, version_no, channel, locator, notes
+             FROM creator_publish_records WHERE workspace_id = ?1 AND draft_id = ?2
+             ORDER BY created_at DESC, id",
+        );
+        query_all(
+            stmt,
+            rusqlite::params![workspace_id.as_str(), draft_id.as_str()],
+            row_to_publish_record,
+        )
+        .map_err(store_error)
+    }
+}

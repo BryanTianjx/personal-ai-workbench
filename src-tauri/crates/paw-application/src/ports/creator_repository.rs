@@ -82,3 +82,16 @@ pub trait CreatorDraftRepository {
         draft_id: &CreatorDraftId,
     ) -> Result<Vec<CreatorDraftReview>, CreatorStoreError>;
 }
+
+/// Publish records (发布记录): manual facts bound to exact versions.
+pub trait CreatorPublishRecordRepository {
+    fn insert_publish_record(
+        &self,
+        record: &paw_domain::creator::CreatorPublishRecord,
+    ) -> Result<(), CreatorStoreError>;
+    fn list_publish_records(
+        &self,
+        workspace_id: &WorkspaceId,
+        draft_id: &CreatorDraftId,
+    ) -> Result<Vec<paw_domain::creator::CreatorPublishRecord>, CreatorStoreError>;
+}

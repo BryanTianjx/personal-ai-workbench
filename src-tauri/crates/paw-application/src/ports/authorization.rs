@@ -224,6 +224,15 @@ pub enum ProtectedAction {
     ReviewCreatorDraft {
         workspace_id: WorkspaceId,
     },
+    /// Creator publish records (E6 第二批: 发布辅助 — manual facts only;
+    /// publishing automation stays gated).
+    CreatePublishRecord {
+        workspace_id: WorkspaceId,
+    },
+    /// Project retrospectives with learning-product backflow (E6 第二批).
+    RecordProjectRetrospective {
+        workspace_id: WorkspaceId,
+    },
 }
 
 impl ProtectedAction {
@@ -288,6 +297,8 @@ impl ProtectedAction {
             Self::CreateCreatorDraft { .. } => "creator.draft.create",
             Self::UpdateCreatorDraft { .. } => "creator.draft.update",
             Self::ReviewCreatorDraft { .. } => "creator.draft.review",
+            Self::CreatePublishRecord { .. } => "creator.publish.record",
+            Self::RecordProjectRetrospective { .. } => "project.retrospective.record",
         }
     }
 
@@ -351,6 +362,8 @@ impl ProtectedAction {
             | Self::CreateCreatorDraft { workspace_id }
             | Self::UpdateCreatorDraft { workspace_id }
             | Self::ReviewCreatorDraft { workspace_id } => Some(workspace_id),
+            Self::CreatePublishRecord { workspace_id }
+            | Self::RecordProjectRetrospective { workspace_id } => Some(workspace_id),
             Self::CapabilityInvoke { workspace_id, .. } => Some(workspace_id),
             Self::PurgeExpiredData => None,
         }

@@ -373,3 +373,97 @@ impl Task {
         })
     }
 }
+
+// ---------------------------------------------------------------------------
+// Project retrospective with learning-product backflow (E6 第二批, Beta 0.5;
+// PRD §3.8/§5.3: 学习结果可回流项目复盘). Work Management owns the
+// retrospective; learning sessions are referenced by id (ADR-014
+// discipline) — the application layer validates existence and linkage.
+// ---------------------------------------------------------------------------
+
+opaque_id!(
+    RetrospectiveId,
+    "Opaque project retrospective identifier (UUIDv7 text)."
+);
+
+/// A project retrospective record. Append-oriented: corrections are new
+/// records (same discipline as assessments). `learning_session_refs` are
+/// the learning products flowing back into the project's review.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProjectRetrospective {
+    pub id: RetrospectiveId,
+    pub workspace_id: WorkspaceId,
+    pub project_id: ProjectId,
+    /// What the project learned / what to carry forward (复盘结论).
+    pub summary: String,
+    /// Learning sessions flowing back (validated by the application layer).
+    pub learning_session_refs: Vec<crate::learning::SessionId>,
+}
+
+impl ProjectRetrospective {
+    pub const SUMMARY_MAX: usize = 2000;
+
+    pub fn new(
+        id: RetrospectiveId,
+        workspace_id: WorkspaceId,
+        project_id: ProjectId,
+        summary: &str,
+        learning_session_refs: Vec<crate::learning::SessionId>,
+    ) -> Result<Self, ValidationError> {
+        let trimmed = summary.trim();
+        if trimmed.is_empty() {
+            return Err(ValidationError::EmptyName);
+        }
+        if trimmed.chars().count() > Self::SUMMARY_MAX {
+            return Err(ValidationError::NotesTooLong {
+                max: Self::SUMMARY_MAX,
+            });
+        }
+        Ok(Self {
+            id,
+            workspace_id,
+            project_id,
+            summary: trimmed.to_string(),
+            learning_session_refs,
+        })
+    }
+}
+
+#[cfg(test)]
+mod retrospective_tests {
+    use super::*;
+
+    #[test]
+    fn retrospective_validates_summary() {
+        assert!(
+            ProjectRetrospective::new(
+                RetrospectiveId::new_v7(),
+                WorkspaceId::new_v7(),
+                ProjectId::new_v7(),
+                "  ",
+                Vec::new()
+            )
+            .is_err()
+        );
+        let long = "x".repeat(2001);
+        assert!(
+            ProjectRetrospective::new(
+                RetrospectiveId::new_v7(),
+                WorkspaceId::new_v7(),
+                ProjectId::new_v7(),
+                &long,
+                Vec::new()
+            )
+            .is_err()
+        );
+        let ok = ProjectRetrospective::new(
+            RetrospectiveId::new_v7(),
+            WorkspaceId::new_v7(),
+            ProjectId::new_v7(),
+            "帧聚合解析已落地，下一步补互操作测试",
+            Vec::new(),
+        )
+        .expect("valid");
+        assert_eq!(ok.learning_session_refs.len(), 0);
+    }
+}

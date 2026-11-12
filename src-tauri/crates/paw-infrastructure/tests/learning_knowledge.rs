@@ -374,7 +374,7 @@ fn upgrade_fixture_from_0007_preserves_existing_data() {
         let ledger: i64 = conn
             .query_row("SELECT COUNT(*) FROM schema_migrations", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(ledger, 11);
+        assert_eq!(ledger, 12);
     }
 
     // Stage 3: the new tables work on the upgraded database.

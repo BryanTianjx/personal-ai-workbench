@@ -26,8 +26,9 @@ use paw_application::{
     AgentExecution, AgentRegistration, Approval, Area, AreaId, Assessment, Availability,
     CreatorDraft, CreatorDraftReview, CreatorDraftVersion, CreatorTopic, Goal, GoalId, Item,
     ItemId, ItemKind, ItemStatus, KnowledgeRefId, KnowledgeSource, LearningGapProposal, Plan,
-    PlanId, PlanStatus, Project, ProjectId, ProjectStatus, Roadmap, RoadmapId, Session, Skill,
-    SkillEvidence, Task, TaskId, TaskStatus, ValidationError, Workspace, WorkspaceId,
+    PlanId, PlanStatus, Project, ProjectId, ProjectRetrospective, ProjectStatus, Roadmap,
+    RoadmapId, Session, Skill, SkillEvidence, Task, TaskId, TaskStatus, ValidationError, Workspace,
+    WorkspaceId,
 };
 use paw_infrastructure::repositories::agent_governance::{
     SqliteAgentExecutionRepository, SqliteAgentGrantRepository, SqliteAgentRegistrationRepository,
@@ -190,6 +191,10 @@ pub struct WorkManagementApi {
     /// Creator content pipeline stores (E6-03).
     creator_topics: paw_infrastructure::repositories::creator::SqliteCreatorTopicRepository,
     creator_drafts: paw_infrastructure::repositories::creator::SqliteCreatorDraftRepository,
+    /// Beta 0.5 second batch stores (E6 第二批).
+    publish_records:
+        paw_infrastructure::repositories::creator::SqliteCreatorPublishRecordRepository,
+    retrospectives: paw_infrastructure::repositories::retrospectives::SqliteRetrospectiveRepository,
     audit: SqliteAuditSink,
 }
 
@@ -274,6 +279,14 @@ impl WorkManagementApi {
                 )?,
             creator_drafts:
                 paw_infrastructure::repositories::creator::SqliteCreatorDraftRepository::open(
+                    db_path,
+                )?,
+            publish_records:
+                paw_infrastructure::repositories::creator::SqliteCreatorPublishRecordRepository::open(
+                    db_path,
+                )?,
+            retrospectives:
+                paw_infrastructure::repositories::retrospectives::SqliteRetrospectiveRepository::open(
                     db_path,
                 )?,
             audit: SqliteAuditSink::open(db_path)?,
@@ -1952,6 +1965,158 @@ impl WorkManagementApi {
         self.creator_drafts
             .list_reviews(workspace_id, &id)
             .map_err(CommandError::from)
+    }
+
+    /// Record a manual publish fact for an approved version (发布辅助 —
+    /// the record is user-entered evidence of an external effect; the
+    /// publishing itself stays outside the workbench). The draft advances
+    /// to the terminal `Published` state through its own machine.
+    pub fn record_publish(
+        &self,
+        workspace_id: &WorkspaceId,
+        draft_id: &str,
+        channel: &str,
+        locator: Option<&str>,
+        notes: Option<&str>,
+    ) -> Result<CreatorDraft, CommandError> {
+        let ctx = self.context();
+        check_gate(
+            &self.authorizer,
+            &self.audit,
+            &ctx,
+            &paw_application::ports::authorization::ProtectedAction::CreatePublishRecord {
+                workspace_id: workspace_id.clone(),
+            },
+            Some(workspace_id),
+            "creator_publish_record",
+            Some(draft_id),
+        )?;
+        let id = paw_application::CreatorDraftId::new(draft_id)
+            .map_err(|_| CommandError::InvalidWorkspaceId)?;
+        use paw_application::ports::creator_repository::CreatorDraftRepository as _;
+        let mut draft = self
+            .creator_drafts
+            .get_draft(&id, workspace_id)
+            .map_err(CommandError::from)?;
+        let channel =
+            paw_application::PublishChannel::parse(channel).ok_or(CommandError::Unexpected)?;
+        let record = paw_application::CreatorPublishRecord::new(
+            paw_application::CreatorPublishRecordId::new_v7(),
+            workspace_id.clone(),
+            draft.id.clone(),
+            draft.current_version_no,
+            channel,
+            locator,
+            notes,
+        )
+        .map_err(CommandError::from)?;
+        // Transition first (validates the state machine), then the record,
+        // then persist the status — a republish of a Published draft fails
+        // before any second record can be inserted.
+        draft
+            .transition(paw_application::DraftStatus::Published)
+            .map_err(CommandError::from)?;
+        {
+            use paw_application::ports::creator_repository::CreatorPublishRecordRepository as _;
+            self.publish_records
+                .insert_publish_record(&record)
+                .map_err(CommandError::from)?;
+        }
+        self.creator_drafts
+            .update_draft(&draft)
+            .map_err(CommandError::from)?;
+        Ok(draft)
+    }
+
+    pub fn list_publish_records(
+        &self,
+        workspace_id: &WorkspaceId,
+        draft_id: &str,
+    ) -> Result<Vec<paw_application::CreatorPublishRecord>, CommandError> {
+        let id = paw_application::CreatorDraftId::new(draft_id)
+            .map_err(|_| CommandError::InvalidWorkspaceId)?;
+        use paw_application::ports::creator_repository::CreatorPublishRecordRepository as _;
+        self.publish_records
+            .list_publish_records(workspace_id, &id)
+            .map_err(CommandError::from)
+    }
+
+    /// Record a project retrospective with learning-product backflow
+    /// (PRD §3.8/§5.3). Every referenced learning session must exist in
+    /// this workspace and belong to an item linked to the same project —
+    /// the backflow is real, not asserted. Emits
+    /// `ProjectRetrospectiveRecorded.v1` atomically (ADR-020).
+    pub fn record_retrospective(
+        &self,
+        workspace_id: &WorkspaceId,
+        project_id: &str,
+        summary: &str,
+        session_ids: &[String],
+    ) -> Result<ProjectRetrospective, CommandError> {
+        let ctx = self.context();
+        check_gate(
+            &self.authorizer,
+            &self.audit,
+            &ctx,
+            &paw_application::ports::authorization::ProtectedAction::RecordProjectRetrospective {
+                workspace_id: workspace_id.clone(),
+            },
+            Some(workspace_id),
+            "project_retrospective",
+            None,
+        )?;
+        let project = ProjectId::new(project_id).map_err(|_| CommandError::ProjectNotFound)?;
+        use paw_application::ports::learning_repository::RetrospectiveRepository as _;
+        let mut session_refs = Vec::new();
+        for sid in session_ids {
+            let session = paw_application::SessionId::new(sid)
+                .map_err(|_| CommandError::LearningRecordNotFound)?;
+            // Existence + linkage: the session's item must be linked to
+            // this project (learning_session_refs → item_projects chain).
+            let linked = self
+                .coordination
+                .query_row(
+                    "SELECT 1 FROM learning_sessions s
+                     JOIN learning_items i ON i.id = s.item_id AND i.workspace_id = s.workspace_id
+                     JOIN learning_item_projects lp
+                       ON lp.item_id = i.id AND lp.workspace_id = i.workspace_id
+                     WHERE s.id = ?1 AND s.workspace_id = ?2 AND lp.project_id = ?3",
+                    rusqlite::params![session.as_str(), workspace_id.as_str(), project.as_str()],
+                    |row| row.get::<_, i64>(0),
+                )
+                .map_err(|_| CommandError::LearningRecordNotFound)?;
+            if linked != 1 {
+                return Err(CommandError::LearningRecordNotFound);
+            }
+            session_refs.push(session);
+        }
+        let retrospective = ProjectRetrospective::new(
+            paw_application::RetrospectiveId::new_v7(),
+            workspace_id.clone(),
+            project,
+            summary,
+            session_refs,
+        )
+        .map_err(|e| match e {
+            paw_application::ValidationError::EmptyName => CommandError::EmptyName,
+            _ => CommandError::NameTooLong,
+        })?;
+        self.retrospectives
+            .record_retrospective(&retrospective)
+            .map_err(CommandError::from_learning)?;
+        Ok(retrospective)
+    }
+
+    pub fn list_retrospectives(
+        &self,
+        workspace_id: &WorkspaceId,
+        project_id: &str,
+    ) -> Result<Vec<ProjectRetrospective>, CommandError> {
+        let project = ProjectId::new(project_id).map_err(|_| CommandError::ProjectNotFound)?;
+        use paw_application::ports::learning_repository::RetrospectiveRepository as _;
+        self.retrospectives
+            .list_retrospectives(workspace_id, &project)
+            .map_err(CommandError::from_learning)
     }
 
     // -- Agent governance (E5, PAW-INF-005/006) ----------------------------------
@@ -4036,4 +4201,65 @@ pub fn list_creator_reviews(
         .lock()
         .expect("WorkManagementApi mutex must not be poisoned");
     api.list_creator_reviews(&workspace_id, &draft_id)
+}
+
+// -- Beta 0.5 second batch (E6 第二批) ---------------------------------------
+
+#[tauri::command]
+pub fn record_publish(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    draft_id: String,
+    channel: String,
+    locator: Option<String>,
+    notes: Option<String>,
+) -> Result<CreatorDraft, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.record_publish(
+        &workspace_id,
+        &draft_id,
+        &channel,
+        locator.as_deref(),
+        notes.as_deref(),
+    )
+}
+
+#[tauri::command]
+pub fn list_publish_records(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    draft_id: String,
+) -> Result<Vec<paw_application::CreatorPublishRecord>, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.list_publish_records(&workspace_id, &draft_id)
+}
+
+#[tauri::command]
+pub fn record_retrospective(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    project_id: String,
+    summary: String,
+    session_ids: Vec<String>,
+) -> Result<ProjectRetrospective, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.record_retrospective(&workspace_id, &project_id, &summary, &session_ids)
+}
+
+#[tauri::command]
+pub fn list_retrospectives(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    project_id: String,
+) -> Result<Vec<ProjectRetrospective>, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.list_retrospectives(&workspace_id, &project_id)
 }
