@@ -187,6 +187,43 @@ pub enum ProtectedAction {
         workspace_id: WorkspaceId,
         capability_id: String,
     },
+    /// Skill matrix mutations (E6-01; levels are never inferred — only
+    /// humans confirm assessments, ADR-015).
+    CreateSkill {
+        workspace_id: WorkspaceId,
+    },
+    UpdateSkill {
+        workspace_id: WorkspaceId,
+    },
+    CreateSkillEvidence {
+        workspace_id: WorkspaceId,
+    },
+    CreateAssessment {
+        workspace_id: WorkspaceId,
+    },
+    /// Project learning-gap proposals (E6-02; PAW-LG-007).
+    ProposeLearningGap {
+        workspace_id: WorkspaceId,
+    },
+    ConfirmLearningGap {
+        workspace_id: WorkspaceId,
+    },
+    /// Creator content pipeline (E6-03).
+    CreateCreatorTopic {
+        workspace_id: WorkspaceId,
+    },
+    UpdateCreatorTopic {
+        workspace_id: WorkspaceId,
+    },
+    CreateCreatorDraft {
+        workspace_id: WorkspaceId,
+    },
+    UpdateCreatorDraft {
+        workspace_id: WorkspaceId,
+    },
+    ReviewCreatorDraft {
+        workspace_id: WorkspaceId,
+    },
 }
 
 impl ProtectedAction {
@@ -240,6 +277,17 @@ impl ProtectedAction {
             Self::CreateAgentGrant { .. } => "agent.grant.create",
             Self::RevokeAgentGrant { .. } => "agent.grant.revoke",
             Self::CapabilityInvoke { .. } => "agent.capability.invoke",
+            Self::CreateSkill { .. } => "skill.create",
+            Self::UpdateSkill { .. } => "skill.update",
+            Self::CreateSkillEvidence { .. } => "skill.evidence.create",
+            Self::CreateAssessment { .. } => "skill.assessment.create",
+            Self::ProposeLearningGap { .. } => "learning.gap.propose",
+            Self::ConfirmLearningGap { .. } => "learning.gap.decide",
+            Self::CreateCreatorTopic { .. } => "creator.topic.create",
+            Self::UpdateCreatorTopic { .. } => "creator.topic.update",
+            Self::CreateCreatorDraft { .. } => "creator.draft.create",
+            Self::UpdateCreatorDraft { .. } => "creator.draft.update",
+            Self::ReviewCreatorDraft { .. } => "creator.draft.review",
         }
     }
 
@@ -292,7 +340,18 @@ impl ProtectedAction {
             | Self::ReconcileAgentExecution { workspace_id }
             | Self::CreateAgentGrant { workspace_id }
             | Self::RevokeAgentGrant { workspace_id }
-            | Self::CapabilityInvoke { workspace_id, .. } => Some(workspace_id),
+            | Self::CreateSkill { workspace_id }
+            | Self::UpdateSkill { workspace_id }
+            | Self::CreateSkillEvidence { workspace_id }
+            | Self::CreateAssessment { workspace_id }
+            | Self::ProposeLearningGap { workspace_id }
+            | Self::ConfirmLearningGap { workspace_id }
+            | Self::CreateCreatorTopic { workspace_id }
+            | Self::UpdateCreatorTopic { workspace_id }
+            | Self::CreateCreatorDraft { workspace_id }
+            | Self::UpdateCreatorDraft { workspace_id }
+            | Self::ReviewCreatorDraft { workspace_id } => Some(workspace_id),
+            Self::CapabilityInvoke { workspace_id, .. } => Some(workspace_id),
             Self::PurgeExpiredData => None,
         }
     }

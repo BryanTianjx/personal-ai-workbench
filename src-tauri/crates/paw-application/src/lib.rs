@@ -16,8 +16,9 @@ pub use paw_domain::ai_collaboration::{
     Approval, ApprovalId, ApprovalStatus, AttemptPolicy, ExecutionStatus, RegistrationStatus,
 };
 pub use paw_domain::creator::{
-    CreatorDraft, CreatorDraftId, CreatorDraftReview, CreatorDraftVersion, CreatorTopic,
-    CreatorTopicId, DraftStatus, ReviewDecision, TopicStatus,
+    CreatorDraft, CreatorDraftId, CreatorDraftReview, CreatorDraftReviewId, CreatorDraftVersion,
+    CreatorDraftVersionId, CreatorError, CreatorTopic, CreatorTopicId, DraftStatus, ReviewDecision,
+    TopicStatus,
 };
 pub use paw_domain::knowledge::{Availability, KnowledgeRef, KnowledgeRefId, KnowledgeSource};
 pub use paw_domain::learning::{
@@ -26,7 +27,7 @@ pub use paw_domain::learning::{
 };
 pub use paw_domain::skills::{
     Assessment, AssessmentId, Confidence, EvidenceKind, EvidenceSourceKind, Skill, SkillEvidence,
-    SkillEvidenceId, SkillId,
+    SkillEvidenceId, SkillId, SkillsError,
 };
 pub use paw_domain::work_management::{
     Area, AreaId, Goal, GoalId, ParseError, Project, ProjectId, ProjectStatus, Task, TaskId,

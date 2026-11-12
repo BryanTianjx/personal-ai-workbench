@@ -123,6 +123,17 @@ fn local_policy(action: &ProtectedAction) -> Result<(), AuthorizationError> {
         | ProtectedAction::ReconcileAgentExecution { .. }
         | ProtectedAction::CreateAgentGrant { .. }
         | ProtectedAction::RevokeAgentGrant { .. }
+        | ProtectedAction::CreateSkill { .. }
+        | ProtectedAction::UpdateSkill { .. }
+        | ProtectedAction::CreateSkillEvidence { .. }
+        | ProtectedAction::CreateAssessment { .. }
+        | ProtectedAction::ProposeLearningGap { .. }
+        | ProtectedAction::ConfirmLearningGap { .. }
+        | ProtectedAction::CreateCreatorTopic { .. }
+        | ProtectedAction::UpdateCreatorTopic { .. }
+        | ProtectedAction::CreateCreatorDraft { .. }
+        | ProtectedAction::UpdateCreatorDraft { .. }
+        | ProtectedAction::ReviewCreatorDraft { .. }
         | ProtectedAction::PurgeExpiredData => Ok(()),
         // The pipeline identity is reserved for agent subjects; the human
         // owner's concrete commands carry their own actions.
