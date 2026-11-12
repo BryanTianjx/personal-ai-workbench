@@ -16,6 +16,7 @@ opaque_id!(
 /// integrations (Lingshu/Hindsight) are Alpha 0.2+ and do not change this
 /// metadata model.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum KnowledgeSource {
     Lingshu,
     Hindsight,
@@ -48,6 +49,7 @@ impl KnowledgeSource {
 /// A stale/unavailable source changes reference availability, never the
 /// historical records that reference it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Availability {
     Available,
     Stale,

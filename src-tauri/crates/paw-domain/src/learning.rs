@@ -26,6 +26,7 @@ opaque_id!(
 
 /// Plan lifecycle states (PRD §3.2); strings match the schema CHECK.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum PlanStatus {
     Draft,
     Active,
@@ -75,6 +76,7 @@ impl std::fmt::Display for PlanStatus {
 
 /// Item kinds (PRD §3.3); strings match the schema CHECK.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ItemKind {
     Concept,
     Reading,
@@ -112,6 +114,7 @@ impl ItemKind {
 /// Item lifecycle states; strings match the schema CHECK. Progress is
 /// bookkeeping only — time and completion are never evidence of skill.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ItemStatus {
     Todo,
     InProgress,

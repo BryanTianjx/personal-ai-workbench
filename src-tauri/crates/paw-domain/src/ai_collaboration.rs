@@ -136,6 +136,7 @@ pub fn validate_contract_version(value: &str) -> Result<(), GovernanceError> {
 
 /// How the agent reaches the provider (schema CHECK strings mirror these).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum AdapterKind {
     /// In-process fake adapter (E5 conformance surface; no external effect).
     Fake,

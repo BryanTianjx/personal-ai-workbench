@@ -97,6 +97,7 @@ fn validate_text(text: Option<&str>, max: usize) -> Result<Option<String>, Skill
 /// What kind of record the evidence points at (PRD §3.6: 证据指向
 /// Artifact、Note、KnowledgeRef、Task 或 Project，不默认复制源内容).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum EvidenceSourceKind {
     Artifact,
     Note,
@@ -131,6 +132,7 @@ impl EvidenceSourceKind {
 /// Evidence type (PRD §3.6: 概念解释、练习、实验、实现、测试验证、
 /// 项目交付、技术评审、教学/文档). Strings match the schema CHECK.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum EvidenceKind {
     ConceptExplanation,
     Practice,
@@ -173,6 +175,7 @@ impl EvidenceKind {
 
 /// Assessment confidence band (PRD §3.5 shows 置信度 alongside the level).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Confidence {
     Low,
     Medium,

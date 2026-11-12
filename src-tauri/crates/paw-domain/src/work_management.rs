@@ -205,6 +205,7 @@ impl Goal {
 /// transition rules, if ever needed, belong in the domain and would be
 /// introduced with an explicit decision.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ProjectStatus {
     Active,
     Paused,
@@ -285,6 +286,7 @@ impl Project {
 ///   └─► cancelled (terminal) ◄── in_progress
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum TaskStatus {
     Todo,
     InProgress,

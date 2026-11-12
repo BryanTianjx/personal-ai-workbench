@@ -468,6 +468,7 @@ opaque_id!(
 /// Publication channels. WeChat is the PRD's named channel; others exist
 /// for manual records of off-platform publishing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum PublishChannel {
     WeChat,
     Manual,
