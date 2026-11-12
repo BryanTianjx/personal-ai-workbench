@@ -1196,18 +1196,20 @@ export default function App() {
           <p>还没有工作空间——创建第一个：</p>
         )}
         {!workspaces.some((w) => w.id === workspaceId) || workspaces.length === 0 ? (
-          <div>
-            <input
-              value={workspaceName}
-              onChange={(e) => setWorkspaceName(e.target.value)}
-              placeholder="工作空间名称（1–120 字符）"
-              disabled={busy}
-            />
-            <button onClick={createWorkspace} disabled={busy || !workspaceName.trim()}>
-              创建工作空间
-            </button>
-          </div>
+          <p>还没有工作空间——创建第一个：</p>
         ) : null}
+        {/* 常驻创建入口：多工作区（如 E5/E7 的跨工作区验证）随时可新建。 */}
+        <div>
+          <input
+            value={workspaceName}
+            onChange={(e) => setWorkspaceName(e.target.value)}
+            placeholder="工作空间名称（1–120 字符）"
+            disabled={busy}
+          />
+          <button onClick={createWorkspace} disabled={busy || !workspaceName.trim()}>
+            创建工作空间
+          </button>
+        </div>
       </section>
 
       {workspaceId && (
