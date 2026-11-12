@@ -8,9 +8,11 @@
 //! OS APIs, network clients, provider SDKs, or any other PAW crate.
 
 pub mod ai_collaboration;
+pub mod creator;
 pub mod knowledge;
 pub mod learning;
 pub mod operation_machine;
+pub mod skills;
 pub mod work_management;
 
 pub use operation_machine::OperationStatus;

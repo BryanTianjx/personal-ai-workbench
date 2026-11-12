@@ -185,3 +185,33 @@ pub trait SessionRepository {
 // linked for callers.
 #[allow(unused_imports)]
 use paw_domain::learning as _learning_types;
+
+// ---------------------------------------------------------------------------
+// Project learning-gap proposals (E6-02, PAW-LG-007)
+// ---------------------------------------------------------------------------
+
+/// Learning-gap proposal persistence (PRD §3.8/§5.3). Proposals reference
+/// projects by id without ownership transfer (ADR-014). `confirm` also
+/// emits the versioned `LearningGapConfirmed.v1` outbox event in the same
+/// transaction; `insert` emits `LearningGapProposed.v1` (ADR-020).
+pub trait GapProposalRepository {
+    fn insert_gap_proposal(
+        &self,
+        gap: &paw_domain::learning::LearningGapProposal,
+    ) -> Result<(), LearningRepositoryError>;
+    fn get_gap_proposal(
+        &self,
+        id: &paw_domain::learning::LearningGapProposalId,
+        workspace_id: &paw_domain::work_management::WorkspaceId,
+    ) -> Result<paw_domain::learning::LearningGapProposal, LearningRepositoryError>;
+    fn list_gap_proposals(
+        &self,
+        workspace_id: &paw_domain::work_management::WorkspaceId,
+        status: Option<paw_domain::learning::GapProposalStatus>,
+    ) -> Result<Vec<paw_domain::learning::LearningGapProposal>, LearningRepositoryError>;
+    /// Persist the confirmed/dismissed state (the entity carries it).
+    fn update_gap_proposal(
+        &self,
+        gap: &paw_domain::learning::LearningGapProposal,
+    ) -> Result<(), LearningRepositoryError>;
+}

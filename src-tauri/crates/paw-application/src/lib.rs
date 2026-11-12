@@ -15,10 +15,19 @@ pub use paw_domain::ai_collaboration::{
     AdapterKind, AgentExecution, AgentExecutionId, AgentRegistration, AgentRegistrationId,
     Approval, ApprovalId, ApprovalStatus, AttemptPolicy, ExecutionStatus, RegistrationStatus,
 };
+pub use paw_domain::creator::{
+    CreatorDraft, CreatorDraftId, CreatorDraftReview, CreatorDraftReviewId, CreatorDraftVersion,
+    CreatorDraftVersionId, CreatorError, CreatorTopic, CreatorTopicId, DraftStatus, ReviewDecision,
+    TopicStatus,
+};
 pub use paw_domain::knowledge::{Availability, KnowledgeRef, KnowledgeRefId, KnowledgeSource};
 pub use paw_domain::learning::{
-    Item, ItemId, ItemKind, ItemStatus, Plan, PlanId, PlanStatus, Roadmap, RoadmapId, Session,
-    SessionId,
+    GapProposalStatus, Item, ItemId, ItemKind, ItemStatus, LearningGapProposal,
+    LearningGapProposalId, Plan, PlanId, PlanStatus, Roadmap, RoadmapId, Session, SessionId,
+};
+pub use paw_domain::skills::{
+    Assessment, AssessmentId, Confidence, EvidenceKind, EvidenceSourceKind, Skill, SkillEvidence,
+    SkillEvidenceId, SkillId, SkillsError,
 };
 pub use paw_domain::work_management::{
     Area, AreaId, Goal, GoalId, ParseError, Project, ProjectId, ProjectStatus, Task, TaskId,

@@ -203,6 +203,46 @@ type AgentRunOutcome = {
   summary: string;
 };
 
+// E6: skill matrix / learning gaps / creator pipeline (serialized shapes).
+type Skill = {
+  id: string;
+  workspace_id: string;
+  name: string;
+  category: string;
+  scale_version: number;
+  notes: string | null;
+};
+type LearningGapProposal = {
+  id: string;
+  workspace_id: string;
+  project_id: string;
+  gap: string;
+  status: "Proposed" | "Confirmed" | "Dismissed";
+  confirmed_item_id: string | null;
+};
+type CreatorTopic = {
+  id: string;
+  workspace_id: string;
+  title: string;
+  notes: string | null;
+  status: "Idea" | "Selected" | "Parked";
+};
+type CreatorDraft = {
+  id: string;
+  workspace_id: string;
+  topic_id: string;
+  title: string;
+  current_version_no: number;
+  status: "Writing" | "InReview" | "Approved";
+};
+type CreatorDraftReview = {
+  id: string;
+  draft_id: string;
+  version_no: number;
+  decision: "Approved" | "Rejected";
+  comment: string | null;
+};
+
 type CommandError =
   | "empty_name"
   | "name_too_long"
@@ -305,6 +345,20 @@ export default function App() {
   const [propAgent, setPropAgent] = useState<string>("");
   const [propCapability, setPropCapability] = useState("work_management.task.create");
 
+  // E6: skills / learning gaps / creator pipeline state.
+  const [skills, setSkills] = useState<Skill[]>([]);
+  const [learningGaps, setLearningGaps] = useState<LearningGapProposal[]>([]);
+  const [creatorTopics, setCreatorTopics] = useState<CreatorTopic[]>([]);
+  const [creatorDrafts, setCreatorDrafts] = useState<CreatorDraft[]>([]);
+  const [skillName, setSkillName] = useState("");
+  const [skillCategory, setSkillCategory] = useState("");
+  const [gapProject, setGapProject] = useState<string>("");
+  const [gapText, setGapText] = useState("");
+  const [gapItem, setGapItem] = useState<string>("");
+  const [topicTitle, setTopicTitle] = useState("");
+  const [draftTitle, setDraftTitle] = useState("");
+  const [draftBody, setDraftBody] = useState("");
+
   const fail = (e: unknown) => setNotice(describe(e));
 
   // ---- Loaders ----
@@ -392,6 +446,19 @@ export default function App() {
       .catch(fail);
     invoke<AgentExecution[]>("list_agent_executions", { workspaceId, limit: 50 })
       .then((r) => setAgentExecutions(r))
+      .catch(fail);
+    // E6 lists: skills, learning gaps, creator topics/drafts.
+    invoke<Skill[]>("list_skills", { workspaceId, category: null })
+      .then((r) => setSkills(r))
+      .catch(fail);
+    invoke<LearningGapProposal[]>("list_learning_gaps", { workspaceId, status: null })
+      .then((r) => setLearningGaps(r))
+      .catch(fail);
+    invoke<CreatorTopic[]>("list_creator_topics", { workspaceId })
+      .then((r) => setCreatorTopics(r))
+      .catch(fail);
+    invoke<CreatorDraft[]>("list_creator_drafts", { workspaceId })
+      .then((r) => setCreatorDrafts(r))
       .catch(fail);
   }, [workspaceId]);
 
@@ -787,6 +854,143 @@ export default function App() {
           workspaceId,
           executionId: id,
           complete,
+        }),
+      reloadAll,
+    );
+
+  // ---- E6: skills / learning gaps / creator actions ----
+  const createSkill = () =>
+    run(
+      () =>
+        invoke<Skill>("create_skill", {
+          workspaceId,
+          name: skillName.trim(),
+          category: skillCategory.trim() || "general",
+          notes: null,
+        }),
+      () => {
+        setSkillName("");
+        reloadAll();
+      },
+    );
+
+  const proposeGap = () =>
+    run(() => {
+      const projectId = gapProject || projects[0]?.id;
+      if (!projectId) {
+        setNotice("请先创建一个项目，再从项目提出学习缺口。");
+        return Promise.resolve();
+      }
+      return invoke<LearningGapProposal>("propose_learning_gap", {
+        workspaceId,
+        projectId,
+        gap: gapText.trim(),
+      });
+    }, () => {
+      setGapText("");
+      reloadAll();
+    });
+
+  const confirmGap = (gap: LearningGapProposal) =>
+    run(() => {
+      if (!gapItem) {
+        setNotice("请选择一个学习条目来承接该缺口。");
+        return Promise.resolve();
+      }
+      return invoke<LearningGapProposal>("confirm_learning_gap", {
+        workspaceId,
+        gapId: gap.id,
+        itemId: gapItem,
+      });
+    }, reloadAll);
+
+  const dismissGap = (gap: LearningGapProposal) =>
+    run(
+      () =>
+        invoke<LearningGapProposal>("dismiss_learning_gap", {
+          workspaceId,
+          gapId: gap.id,
+        }),
+      reloadAll,
+    );
+
+  const createTopic = () =>
+    run(() => {
+      return invoke<CreatorTopic>("create_creator_topic", {
+        workspaceId,
+        title: topicTitle.trim(),
+        notes: null,
+      });
+    }, () => {
+      setTopicTitle("");
+      reloadAll();
+    });
+
+  const cycleTopicStatus = (t: CreatorTopic) =>
+    run(
+      () =>
+        invoke<CreatorTopic>("update_creator_topic", {
+          topic: {
+            ...t,
+            status:
+              t.status === "Idea"
+                ? "Selected"
+                : t.status === "Selected"
+                  ? "Parked"
+                  : "Idea",
+          },
+        }),
+      reloadAll,
+    );
+
+  const createDraft = (t: CreatorTopic) =>
+    run(() => {
+      return invoke<CreatorDraft>("create_creator_draft", {
+        workspaceId,
+        topicId: t.id,
+        title: draftTitle.trim() || t.title,
+      });
+    }, () => {
+      setDraftTitle("");
+      reloadAll();
+    });
+
+  const appendVersion = (d: CreatorDraft) =>
+    run(() => {
+      if (!draftBody.trim()) {
+        setNotice("版本正文为空。");
+        return Promise.resolve();
+      }
+      return invoke<CreatorDraft>("append_creator_draft_version", {
+        workspaceId,
+        draftId: d.id,
+        body: draftBody,
+      });
+    }, () => {
+      setDraftBody("");
+      reloadAll();
+    });
+
+  const transitionDraft = (d: CreatorDraft, newStatus: CreatorDraft["status"]) =>
+    run(
+      () =>
+        invoke<CreatorDraft>("transition_creator_draft", {
+          workspaceId,
+          draftId: d.id,
+          newStatus,
+        }),
+      reloadAll,
+    );
+
+  const submitReview = (d: CreatorDraft, decision: "Approved" | "Rejected") =>
+    run(
+      () =>
+        invoke<CreatorDraftReview>("submit_creator_review", {
+          workspaceId,
+          draftId: d.id,
+          versionNo: d.current_version_no,
+          decision,
+          comment: null,
         }),
       reloadAll,
     );
@@ -1495,6 +1699,201 @@ export default function App() {
                         对账：已失败
                       </button>
                     </>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          {/* Skill matrix & growth assessment (E6-01) */}
+          <section>
+            <h2>技能评估</h2>
+            <p>
+              技能等级只能由你基于证据确认（评估必须引用至少一条证据，保留尺度版本与评估历史）；
+              学习完成度与时间不能被误读为能力证明。
+            </p>
+            <input
+              value={skillName}
+              onChange={(e) => setSkillName(e.target.value)}
+              placeholder="技能名称"
+              disabled={busy}
+            />
+            <input
+              value={skillCategory}
+              onChange={(e) => setSkillCategory(e.target.value)}
+              placeholder="分类（可选）"
+              disabled={busy}
+            />
+            <button onClick={createSkill} disabled={busy || !skillName.trim()}>
+              添加技能
+            </button>
+            <ul>
+              {skills.length === 0 && <li>暂无技能。添加技能后再录入证据与评估。</li>}
+              {skills.map((s) => (
+                <li key={s.id}>
+                  <strong>{s.name}</strong>（{s.category}，尺度 v{s.scale_version}）
+                </li>
+              ))}
+            </ul>
+            <p className="muted">
+              证据与评估通过命令桥录入（create_skill_evidence / create_assessment）；
+              UI 逐步完善中。
+            </p>
+          </section>
+
+          {/* Project learning gaps (E6-02) */}
+          <section>
+            <h2>学习缺口</h2>
+            <p>
+              项目复盘提出待确认的学习需求；确认后绑定学习条目；搁置保留决策历史。
+            </p>
+            <select
+              value={gapProject || projects[0]?.id || ""}
+              onChange={(e) => setGapProject(e.target.value)}
+              disabled={busy || projects.length === 0}
+            >
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+            <input
+              value={gapText}
+              onChange={(e) => setGapText(e.target.value)}
+              placeholder="缺口描述（1–500 字符）"
+              disabled={busy}
+            />
+            <button onClick={proposeGap} disabled={busy || !gapText.trim()}>
+              提出缺口
+            </button>
+            <ul>
+              {learningGaps.length === 0 && <li>暂无学习缺口提议。</li>}
+              {learningGaps.map((g) => (
+                <li key={g.id}>
+                  <strong>{g.gap}</strong>（{g.status}
+                  {g.confirmed_item_id !== null && " · 已绑定学习条目"}）{" "}
+                  {g.status === "Proposed" && (
+                    <>
+                      <select
+                        value={gapItem}
+                        onChange={(e) => setGapItem(e.target.value)}
+                        disabled={busy}
+                      >
+                        <option value="">选择学习条目…</option>
+                        {learningItems.map((i) => (
+                          <option key={i.id} value={i.id}>
+                            {i.title}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={() => confirmGap(g)}
+                        disabled={busy || !gapItem}
+                      >
+                        确认
+                      </button>{" "}
+                      <button onClick={() => dismissGap(g)} disabled={busy}>
+                        搁置
+                      </button>
+                    </>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          {/* Creator content pipeline (E6-03) */}
+          <section>
+            <h2>内容创作</h2>
+            <p>选题 → 草稿（版本不可变）→ 审核（绑定精确版本）。发布自动化待官方接口验证。</p>
+            <input
+              value={topicTitle}
+              onChange={(e) => setTopicTitle(e.target.value)}
+              placeholder="选题标题"
+              disabled={busy}
+            />
+            <button onClick={createTopic} disabled={busy || !topicTitle.trim()}>
+              添加选题
+            </button>
+            <ul>
+              {creatorTopics.length === 0 && <li>暂无选题。</li>}
+              {creatorTopics.map((t) => (
+                <li key={t.id}>
+                  <strong>{t.title}</strong>（{t.status}）{" "}
+                  <button onClick={() => cycleTopicStatus(t)} disabled={busy}>
+                    推进状态
+                  </button>{" "}
+                  <button onClick={() => createDraft(t)} disabled={busy}>
+                    建草稿
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <input
+              value={draftTitle}
+              onChange={(e) => setDraftTitle(e.target.value)}
+              placeholder="草稿标题（可选，默认同选题）"
+              disabled={busy}
+            />
+            <ul>
+              {creatorDrafts.length === 0 && <li>暂无草稿。</li>}
+              {creatorDrafts.map((d) => (
+                <li key={d.id}>
+                  <strong>{d.title}</strong>
+                  （v{d.current_version_no}，{d.status}）{" "}
+                  <textarea
+                    value={draftBody}
+                    onChange={(e) => setDraftBody(e.target.value)}
+                    placeholder="新版本正文"
+                    disabled={busy}
+                    rows={2}
+                  />
+                  <button
+                    onClick={() => appendVersion(d)}
+                    disabled={busy || !draftBody.trim()}
+                  >
+                    保存新版本
+                  </button>{" "}
+                  {d.status === "Writing" && (
+                    <button
+                      onClick={() => transitionDraft(d, "InReview")}
+                      disabled={busy}
+                    >
+                      提交审核
+                    </button>
+                  )}
+                  {d.status === "InReview" && (
+                    <>
+                      <button
+                        onClick={() => submitReview(d, "Approved")}
+                        disabled={busy}
+                      >
+                        通过 v{d.current_version_no}
+                      </button>{" "}
+                      <button
+                        onClick={() => submitReview(d, "Rejected")}
+                        disabled={busy}
+                      >
+                        驳回
+                      </button>
+                    </>
+                  )}
+                  {d.status === "InReview" && (
+                    <button
+                      onClick={() => transitionDraft(d, "Writing")}
+                      disabled={busy}
+                    >
+                      退回写作
+                    </button>
+                  )}
+                  {d.status === "Approved" && (
+                    <button
+                      onClick={() => transitionDraft(d, "Writing")}
+                      disabled={busy}
+                    >
+                      开启新版本
+                    </button>
                   )}
                 </li>
               ))}

@@ -23,10 +23,11 @@ use paw_application::use_cases::knowledge as knowledge_use_cases;
 use paw_application::use_cases::learning;
 use paw_application::use_cases::work_management::{self as use_cases, WorkManagementError};
 use paw_application::{
-    AgentExecution, AgentRegistration, Approval, Area, AreaId, Availability, Goal, GoalId, Item,
-    ItemId, ItemKind, ItemStatus, KnowledgeRefId, KnowledgeSource, Plan, PlanId, PlanStatus,
-    Project, ProjectId, ProjectStatus, Roadmap, RoadmapId, Session, Task, TaskId, TaskStatus,
-    ValidationError, Workspace, WorkspaceId,
+    AgentExecution, AgentRegistration, Approval, Area, AreaId, Assessment, Availability,
+    CreatorDraft, CreatorDraftReview, CreatorDraftVersion, CreatorTopic, Goal, GoalId, Item,
+    ItemId, ItemKind, ItemStatus, KnowledgeRefId, KnowledgeSource, LearningGapProposal, Plan,
+    PlanId, PlanStatus, Project, ProjectId, ProjectStatus, Roadmap, RoadmapId, Session, Skill,
+    SkillEvidence, Task, TaskId, TaskStatus, ValidationError, Workspace, WorkspaceId,
 };
 use paw_infrastructure::repositories::agent_governance::{
     SqliteAgentExecutionRepository, SqliteAgentGrantRepository, SqliteAgentRegistrationRepository,
@@ -180,6 +181,15 @@ pub struct WorkManagementApi {
     authorizer: GovernedAuthorizer<SqliteAgentGrantRepository>,
     /// Durable envelope port for the invocation pipeline.
     operations_service: paw_infrastructure::operations::SqliteOperationService,
+    /// Learning & Growth Beta stores (E6): skills/evidence/assessments
+    /// (PAW-LG-008/009) and project learning-gap proposals (PAW-LG-007).
+    skills: paw_infrastructure::repositories::skills::SqliteSkillRepository,
+    skill_evidence: paw_infrastructure::repositories::skills::SqliteSkillEvidenceRepository,
+    assessments: paw_infrastructure::repositories::skills::SqliteAssessmentRepository,
+    gap_proposals: paw_infrastructure::repositories::gap_proposals::SqliteGapProposalRepository,
+    /// Creator content pipeline stores (E6-03).
+    creator_topics: paw_infrastructure::repositories::creator::SqliteCreatorTopicRepository,
+    creator_drafts: paw_infrastructure::repositories::creator::SqliteCreatorDraftRepository,
     audit: SqliteAuditSink,
 }
 
@@ -243,6 +253,29 @@ impl WorkManagementApi {
             operations_service: paw_infrastructure::operations::SqliteOperationService::new(
                 paw_infrastructure::sqlite::open(db_path)?,
             ),
+            skills: paw_infrastructure::repositories::skills::SqliteSkillRepository::open(
+                db_path,
+            )?,
+            skill_evidence:
+                paw_infrastructure::repositories::skills::SqliteSkillEvidenceRepository::open(
+                    db_path,
+                )?,
+            assessments:
+                paw_infrastructure::repositories::skills::SqliteAssessmentRepository::open(
+                    db_path,
+                )?,
+            gap_proposals:
+                paw_infrastructure::repositories::gap_proposals::SqliteGapProposalRepository::open(
+                    db_path,
+                )?,
+            creator_topics:
+                paw_infrastructure::repositories::creator::SqliteCreatorTopicRepository::open(
+                    db_path,
+                )?,
+            creator_drafts:
+                paw_infrastructure::repositories::creator::SqliteCreatorDraftRepository::open(
+                    db_path,
+                )?,
             audit: SqliteAuditSink::open(db_path)?,
         })
     }
@@ -1348,6 +1381,579 @@ impl WorkManagementApi {
         use_cases::task::list_tasks(&self.tasks, workspace_id, project_id, status)
     }
 
+    // -- Skill matrix & growth assessment (E6-01, PAW-LG-008/009) ----------------
+
+    /// Register a skill in the matrix. Levels are never inferred here —
+    /// assessments are separate user-confirmed records (ADR-015).
+    pub fn create_skill(
+        &self,
+        workspace_id: &WorkspaceId,
+        name: &str,
+        category: &str,
+        notes: Option<&str>,
+    ) -> Result<Skill, CommandError> {
+        let ctx = self.context();
+        check_gate(
+            &self.authorizer,
+            &self.audit,
+            &ctx,
+            &paw_application::ports::authorization::ProtectedAction::CreateSkill {
+                workspace_id: workspace_id.clone(),
+            },
+            Some(workspace_id),
+            "skill",
+            None,
+        )?;
+        let skill = Skill::new(
+            paw_application::SkillId::new_v7(),
+            workspace_id.clone(),
+            name,
+            category,
+            notes,
+        )
+        .map_err(CommandError::from)?;
+        use paw_application::ports::skill_repository::SkillRepository as _;
+        self.skills
+            .insert_skill(&skill)
+            .map_err(CommandError::from)?;
+        Ok(skill)
+    }
+
+    /// Update skill metadata (rename/category/notes) or bump the scale
+    /// version via the entity's own method before calling.
+    pub fn update_skill(&self, skill: &Skill) -> Result<Skill, CommandError> {
+        let ctx = self.context();
+        check_gate(
+            &self.authorizer,
+            &self.audit,
+            &ctx,
+            &paw_application::ports::authorization::ProtectedAction::UpdateSkill {
+                workspace_id: skill.workspace_id.clone(),
+            },
+            Some(&skill.workspace_id),
+            "skill",
+            Some(skill.id.as_str()),
+        )?;
+        use paw_application::ports::skill_repository::SkillRepository as _;
+        self.skills
+            .update_skill(skill)
+            .map_err(CommandError::from)?;
+        Ok(skill.clone())
+    }
+
+    pub fn list_skills(
+        &self,
+        workspace_id: &WorkspaceId,
+        category: Option<&str>,
+    ) -> Result<Vec<Skill>, CommandError> {
+        use paw_application::ports::skill_repository::SkillRepository as _;
+        self.skills
+            .list_skills(workspace_id, category)
+            .map_err(CommandError::from)
+    }
+
+    /// Add an evidence record pointing at its source (PRD §3.6).
+    #[allow(clippy::too_many_arguments)]
+    pub fn add_skill_evidence(
+        &self,
+        workspace_id: &WorkspaceId,
+        skill_id: &str,
+        kind: &str,
+        source_kind: &str,
+        source_id: &str,
+        summary: Option<&str>,
+    ) -> Result<SkillEvidence, CommandError> {
+        let ctx = self.context();
+        check_gate(
+            &self.authorizer,
+            &self.audit,
+            &ctx,
+            &paw_application::ports::authorization::ProtectedAction::CreateSkillEvidence {
+                workspace_id: workspace_id.clone(),
+            },
+            Some(workspace_id),
+            "skill_evidence",
+            None,
+        )?;
+        let skill = paw_application::SkillId::new(skill_id)
+            .map_err(|_| CommandError::InvalidWorkspaceId)?;
+        let kind = paw_application::EvidenceKind::parse(kind).ok_or(CommandError::Unexpected)?;
+        let source = paw_application::EvidenceSourceKind::parse(source_kind)
+            .ok_or(CommandError::Unexpected)?;
+        let record = SkillEvidence::new(
+            paw_application::SkillEvidenceId::new_v7(),
+            workspace_id.clone(),
+            skill,
+            kind,
+            source,
+            source_id,
+            summary,
+        )
+        .map_err(CommandError::from)?;
+        use paw_application::ports::skill_repository::SkillEvidenceRepository as _;
+        self.skill_evidence
+            .insert_evidence(&record)
+            .map_err(CommandError::from)?;
+        Ok(record)
+    }
+
+    pub fn list_skill_evidence(
+        &self,
+        workspace_id: &WorkspaceId,
+        skill_id: &str,
+    ) -> Result<Vec<SkillEvidence>, CommandError> {
+        let skill = paw_application::SkillId::new(skill_id)
+            .map_err(|_| CommandError::InvalidWorkspaceId)?;
+        use paw_application::ports::skill_repository::SkillEvidenceRepository as _;
+        self.skill_evidence
+            .list_evidence(workspace_id, &skill)
+            .map_err(CommandError::from)
+    }
+
+    /// Create a user-confirmed assessment (PAW-LG-009). The evidence ids
+    /// are validated to exist in this workspace before the record is
+    /// stored — assessment history is append-only and snapshots the skill's
+    /// scale version (ADR-015).
+    pub fn create_assessment(
+        &self,
+        workspace_id: &WorkspaceId,
+        skill_id: &str,
+        level: u8,
+        confidence: &str,
+        rationale: Option<&str>,
+        evidence_ids: &[String],
+    ) -> Result<Assessment, CommandError> {
+        let ctx = self.context();
+        check_gate(
+            &self.authorizer,
+            &self.audit,
+            &ctx,
+            &paw_application::ports::authorization::ProtectedAction::CreateAssessment {
+                workspace_id: workspace_id.clone(),
+            },
+            Some(workspace_id),
+            "assessment",
+            None,
+        )?;
+        let skill = paw_application::SkillId::new(skill_id)
+            .map_err(|_| CommandError::InvalidWorkspaceId)?;
+        use paw_application::ports::skill_repository::{
+            SkillEvidenceRepository as _, SkillRepository as _,
+        };
+        // The skill exists and the assessment snapshots its current scale.
+        let skill_record = self
+            .skills
+            .get_skill(&skill, workspace_id)
+            .map_err(CommandError::from)?;
+        let mut evidence = Vec::new();
+        for id in evidence_ids {
+            let evidence_id = paw_application::SkillEvidenceId::new(id)
+                .map_err(|_| CommandError::InvalidWorkspaceId)?;
+            // Validation at use time: the evidence must exist in this
+            // workspace (and belong to the same skill).
+            let record = self
+                .skill_evidence
+                .get_evidence(&evidence_id, workspace_id)
+                .map_err(CommandError::from)?;
+            if record.skill_id != skill {
+                return Err(CommandError::SkillNotFound);
+            }
+            evidence.push(evidence_id);
+        }
+        let confidence =
+            paw_application::Confidence::parse(confidence).ok_or(CommandError::Unexpected)?;
+        let assessment = Assessment::new(
+            paw_application::AssessmentId::new_v7(),
+            workspace_id.clone(),
+            skill,
+            level,
+            skill_record.scale_version,
+            confidence,
+            rationale,
+            evidence,
+        )
+        .map_err(CommandError::from)?;
+        use paw_application::ports::skill_repository::AssessmentRepository as _;
+        self.assessments
+            .insert_assessment(&assessment, None)
+            .map_err(CommandError::from)?;
+        Ok(assessment)
+    }
+
+    pub fn list_assessments(
+        &self,
+        workspace_id: &WorkspaceId,
+        skill_id: &str,
+    ) -> Result<Vec<Assessment>, CommandError> {
+        let skill = paw_application::SkillId::new(skill_id)
+            .map_err(|_| CommandError::InvalidWorkspaceId)?;
+        use paw_application::ports::skill_repository::AssessmentRepository as _;
+        self.assessments
+            .list_assessments(workspace_id, &skill)
+            .map_err(CommandError::from)
+    }
+
+    // -- Project learning gaps (E6-02, PAW-LG-007) -------------------------------
+
+    /// Propose a learning gap from a project (AI/复盘 suggestions enter as
+    /// `Proposed`; they become plan material only after user confirmation).
+    pub fn propose_learning_gap(
+        &self,
+        workspace_id: &WorkspaceId,
+        project_id: &str,
+        gap: &str,
+    ) -> Result<LearningGapProposal, CommandError> {
+        let ctx = self.context();
+        check_gate(
+            &self.authorizer,
+            &self.audit,
+            &ctx,
+            &paw_application::ports::authorization::ProtectedAction::ProposeLearningGap {
+                workspace_id: workspace_id.clone(),
+            },
+            Some(workspace_id),
+            "learning_gap",
+            None,
+        )?;
+        let project = ProjectId::new(project_id).map_err(|_| CommandError::ProjectNotFound)?;
+        let gap = LearningGapProposal::new(
+            paw_application::LearningGapProposalId::new_v7(),
+            workspace_id.clone(),
+            project,
+            gap,
+        )
+        .map_err(|e| match e {
+            paw_application::ValidationError::EmptyName => CommandError::EmptyName,
+            _ => CommandError::NameTooLong,
+        })?;
+        use paw_application::ports::learning_repository::GapProposalRepository as _;
+        self.gap_proposals
+            .insert_gap_proposal(&gap)
+            .map_err(CommandError::from_learning)?;
+        Ok(gap)
+    }
+
+    /// Confirm a gap: bind an existing learning item (creation stays a
+    /// separate user decision through the learning commands).
+    pub fn confirm_learning_gap(
+        &self,
+        workspace_id: &WorkspaceId,
+        gap_id: &str,
+        item_id: &str,
+    ) -> Result<LearningGapProposal, CommandError> {
+        let ctx = self.context();
+        check_gate(
+            &self.authorizer,
+            &self.audit,
+            &ctx,
+            &paw_application::ports::authorization::ProtectedAction::ConfirmLearningGap {
+                workspace_id: workspace_id.clone(),
+            },
+            Some(workspace_id),
+            "learning_gap",
+            Some(gap_id),
+        )?;
+        let id = paw_application::LearningGapProposalId::new(gap_id)
+            .map_err(|_| CommandError::InvalidWorkspaceId)?;
+        let item = paw_application::ItemId::new(item_id).map_err(|_| CommandError::ItemNotFound)?;
+        use paw_application::ports::learning_repository::GapProposalRepository as _;
+        let mut gap = self
+            .gap_proposals
+            .get_gap_proposal(&id, workspace_id)
+            .map_err(CommandError::from_learning)?;
+        gap.confirm(item)
+            .map_err(|_| CommandError::TaskStatusInvalid)?;
+        self.gap_proposals
+            .update_gap_proposal(&gap)
+            .map_err(CommandError::from_learning)?;
+        Ok(gap)
+    }
+
+    pub fn dismiss_learning_gap(
+        &self,
+        workspace_id: &WorkspaceId,
+        gap_id: &str,
+    ) -> Result<LearningGapProposal, CommandError> {
+        let ctx = self.context();
+        check_gate(
+            &self.authorizer,
+            &self.audit,
+            &ctx,
+            &paw_application::ports::authorization::ProtectedAction::ConfirmLearningGap {
+                workspace_id: workspace_id.clone(),
+            },
+            Some(workspace_id),
+            "learning_gap",
+            Some(gap_id),
+        )?;
+        let id = paw_application::LearningGapProposalId::new(gap_id)
+            .map_err(|_| CommandError::InvalidWorkspaceId)?;
+        use paw_application::ports::learning_repository::GapProposalRepository as _;
+        let mut gap = self
+            .gap_proposals
+            .get_gap_proposal(&id, workspace_id)
+            .map_err(CommandError::from_learning)?;
+        gap.dismiss().map_err(|_| CommandError::TaskStatusInvalid)?;
+        self.gap_proposals
+            .update_gap_proposal(&gap)
+            .map_err(CommandError::from_learning)?;
+        Ok(gap)
+    }
+
+    pub fn list_learning_gaps(
+        &self,
+        workspace_id: &WorkspaceId,
+        status: Option<paw_application::GapProposalStatus>,
+    ) -> Result<Vec<LearningGapProposal>, CommandError> {
+        use paw_application::ports::learning_repository::GapProposalRepository as _;
+        self.gap_proposals
+            .list_gap_proposals(workspace_id, status)
+            .map_err(CommandError::from)
+    }
+
+    // -- Creator content pipeline (E6-03) ----------------------------------------
+
+    pub fn create_creator_topic(
+        &self,
+        workspace_id: &WorkspaceId,
+        title: &str,
+        notes: Option<&str>,
+    ) -> Result<CreatorTopic, CommandError> {
+        let ctx = self.context();
+        check_gate(
+            &self.authorizer,
+            &self.audit,
+            &ctx,
+            &paw_application::ports::authorization::ProtectedAction::CreateCreatorTopic {
+                workspace_id: workspace_id.clone(),
+            },
+            Some(workspace_id),
+            "creator_topic",
+            None,
+        )?;
+        let topic = CreatorTopic::new(
+            paw_application::CreatorTopicId::new_v7(),
+            workspace_id.clone(),
+            title,
+            notes,
+        )
+        .map_err(CommandError::from)?;
+        use paw_application::ports::creator_repository::CreatorTopicRepository as _;
+        self.creator_topics
+            .insert_topic(&topic)
+            .map_err(CommandError::from)?;
+        Ok(topic)
+    }
+
+    /// Update a topic (title/notes/status transitions validated by the
+    /// domain state machine).
+    pub fn update_creator_topic(&self, topic: &CreatorTopic) -> Result<CreatorTopic, CommandError> {
+        let ctx = self.context();
+        check_gate(
+            &self.authorizer,
+            &self.audit,
+            &ctx,
+            &paw_application::ports::authorization::ProtectedAction::UpdateCreatorTopic {
+                workspace_id: topic.workspace_id.clone(),
+            },
+            Some(&topic.workspace_id),
+            "creator_topic",
+            Some(topic.id.as_str()),
+        )?;
+        use paw_application::ports::creator_repository::CreatorTopicRepository as _;
+        self.creator_topics
+            .update_topic(topic)
+            .map_err(CommandError::from)?;
+        Ok(topic.clone())
+    }
+
+    pub fn list_creator_topics(
+        &self,
+        workspace_id: &WorkspaceId,
+    ) -> Result<Vec<CreatorTopic>, CommandError> {
+        use paw_application::ports::creator_repository::CreatorTopicRepository as _;
+        self.creator_topics
+            .list_topics(workspace_id, None)
+            .map_err(CommandError::from)
+    }
+
+    pub fn create_creator_draft(
+        &self,
+        workspace_id: &WorkspaceId,
+        topic_id: &str,
+        title: &str,
+    ) -> Result<CreatorDraft, CommandError> {
+        let ctx = self.context();
+        check_gate(
+            &self.authorizer,
+            &self.audit,
+            &ctx,
+            &paw_application::ports::authorization::ProtectedAction::CreateCreatorDraft {
+                workspace_id: workspace_id.clone(),
+            },
+            Some(workspace_id),
+            "creator_draft",
+            None,
+        )?;
+        let topic = paw_application::CreatorTopicId::new(topic_id)
+            .map_err(|_| CommandError::InvalidWorkspaceId)?;
+        let draft = CreatorDraft::new(
+            paw_application::CreatorDraftId::new_v7(),
+            workspace_id.clone(),
+            topic,
+            title,
+        )
+        .map_err(CommandError::from)?;
+        use paw_application::ports::creator_repository::CreatorDraftRepository as _;
+        self.creator_drafts
+            .insert_draft(&draft)
+            .map_err(CommandError::from)?;
+        Ok(draft)
+    }
+
+    /// Append an immutable version snapshot (head bumps atomically).
+    pub fn append_creator_draft_version(
+        &self,
+        workspace_id: &WorkspaceId,
+        draft_id: &str,
+        body: &str,
+    ) -> Result<CreatorDraft, CommandError> {
+        let ctx = self.context();
+        check_gate(
+            &self.authorizer,
+            &self.audit,
+            &ctx,
+            &paw_application::ports::authorization::ProtectedAction::UpdateCreatorDraft {
+                workspace_id: workspace_id.clone(),
+            },
+            Some(workspace_id),
+            "creator_draft",
+            Some(draft_id),
+        )?;
+        let id = paw_application::CreatorDraftId::new(draft_id)
+            .map_err(|_| CommandError::InvalidWorkspaceId)?;
+        use paw_application::ports::creator_repository::CreatorDraftRepository as _;
+        let mut draft = self
+            .creator_drafts
+            .get_draft(&id, workspace_id)
+            .map_err(CommandError::from)?;
+        let next = draft.current_version_no + 1;
+        let version = CreatorDraftVersion::new(
+            paw_application::CreatorDraftVersionId::new_v7(),
+            workspace_id.clone(),
+            draft.id.clone(),
+            next,
+            body,
+        )
+        .map_err(CommandError::from)?;
+        self.creator_drafts
+            .append_version(&version)
+            .map_err(CommandError::from)?;
+        draft.current_version_no = next;
+        Ok(draft)
+    }
+
+    /// Advance the draft status (domain machine validates the transition).
+    pub fn transition_creator_draft(
+        &self,
+        workspace_id: &WorkspaceId,
+        draft_id: &str,
+        new_status: &str,
+    ) -> Result<CreatorDraft, CommandError> {
+        let ctx = self.context();
+        check_gate(
+            &self.authorizer,
+            &self.audit,
+            &ctx,
+            &paw_application::ports::authorization::ProtectedAction::UpdateCreatorDraft {
+                workspace_id: workspace_id.clone(),
+            },
+            Some(workspace_id),
+            "creator_draft",
+            Some(draft_id),
+        )?;
+        let id = paw_application::CreatorDraftId::new(draft_id)
+            .map_err(|_| CommandError::InvalidWorkspaceId)?;
+        use paw_application::ports::creator_repository::CreatorDraftRepository as _;
+        let mut draft = self
+            .creator_drafts
+            .get_draft(&id, workspace_id)
+            .map_err(CommandError::from)?;
+        let status =
+            paw_application::DraftStatus::parse(new_status).ok_or(CommandError::Unexpected)?;
+        draft.transition(status).map_err(CommandError::from)?;
+        self.creator_drafts
+            .update_draft(&draft)
+            .map_err(CommandError::from)?;
+        Ok(draft)
+    }
+
+    /// Record a review decision bound to one exact version; on approval the
+    /// draft status machine is advanced by the caller's follow-up
+    /// transition (reviews are history, not state writes).
+    pub fn submit_creator_review(
+        &self,
+        workspace_id: &WorkspaceId,
+        draft_id: &str,
+        version_no: u32,
+        decision: &str,
+        comment: Option<&str>,
+    ) -> Result<CreatorDraftReview, CommandError> {
+        let ctx = self.context();
+        check_gate(
+            &self.authorizer,
+            &self.audit,
+            &ctx,
+            &paw_application::ports::authorization::ProtectedAction::ReviewCreatorDraft {
+                workspace_id: workspace_id.clone(),
+            },
+            Some(workspace_id),
+            "creator_review",
+            Some(draft_id),
+        )?;
+        let id = paw_application::CreatorDraftId::new(draft_id)
+            .map_err(|_| CommandError::InvalidWorkspaceId)?;
+        let decision =
+            paw_application::ReviewDecision::parse(decision).ok_or(CommandError::Unexpected)?;
+        let review = CreatorDraftReview::new(
+            paw_application::CreatorDraftReviewId::new_v7(),
+            workspace_id.clone(),
+            id,
+            version_no,
+            decision,
+            comment,
+        )
+        .map_err(CommandError::from)?;
+        use paw_application::ports::creator_repository::CreatorDraftRepository as _;
+        self.creator_drafts
+            .insert_review(&review)
+            .map_err(CommandError::from)?;
+        Ok(review)
+    }
+
+    pub fn list_creator_drafts(
+        &self,
+        workspace_id: &WorkspaceId,
+    ) -> Result<Vec<CreatorDraft>, CommandError> {
+        use paw_application::ports::creator_repository::CreatorDraftRepository as _;
+        self.creator_drafts
+            .list_drafts(workspace_id, None)
+            .map_err(CommandError::from)
+    }
+
+    pub fn list_creator_reviews(
+        &self,
+        workspace_id: &WorkspaceId,
+        draft_id: &str,
+    ) -> Result<Vec<CreatorDraftReview>, CommandError> {
+        let id = paw_application::CreatorDraftId::new(draft_id)
+            .map_err(|_| CommandError::InvalidWorkspaceId)?;
+        use paw_application::ports::creator_repository::CreatorDraftRepository as _;
+        self.creator_drafts
+            .list_reviews(workspace_id, &id)
+            .map_err(CommandError::from)
+    }
+
     // -- Agent governance (E5, PAW-INF-005/006) ----------------------------------
 
     fn coordinator(
@@ -1804,6 +2410,8 @@ pub enum CommandError {
     OperationNotFound,
     /// The referenced learning record does not exist (E4).
     LearningRecordNotFound,
+    /// The referenced learning item does not exist (E6 gap confirmation).
+    ItemNotFound,
     /// The referenced knowledge reference does not exist (E4).
     KnowledgeRefNotFound,
     /// The referenced agent registration does not exist (E5).
@@ -1816,6 +2424,12 @@ pub enum CommandError {
     ApprovalNotActive,
     /// The capability id or contract version is not published (E5).
     CapabilityUnsupported,
+    /// The referenced skill does not exist (E6).
+    SkillNotFound,
+    /// The referenced creator record does not exist (E6).
+    CreatorNotFound,
+    /// A creator state transition was refused by the domain machine (E6).
+    CreatorStateInvalid,
     /// Fresh authorization refused the protected side effect (E1-09).
     Denied,
     /// Any other failure; details stay on the Rust side.
@@ -1899,6 +2513,18 @@ impl From<paw_application::ParseError> for CommandError {
 }
 
 /// Map an infrastructure OperationError to the safe boundary code.
+impl From<paw_application::ports::learning_repository::LearningRepositoryError> for CommandError {
+    fn from(e: paw_application::ports::learning_repository::LearningRepositoryError) -> Self {
+        use paw_application::ports::learning_repository::LearningRepositoryError as E;
+        match e {
+            E::RoadmapNotFound | E::PlanNotFound | E::ItemNotFound | E::SessionNotFound => {
+                Self::LearningRecordNotFound
+            }
+            E::Invariant(_) => Self::Unexpected,
+        }
+    }
+}
+
 fn map_operation_error(e: paw_infrastructure::operations::OperationError) -> CommandError {
     match e {
         paw_infrastructure::operations::OperationError::NotFound(_) => {
@@ -1948,6 +2574,51 @@ impl From<AgentStoreError> for CommandError {
             AgentStoreError::NotFound => Self::AgentRegistrationNotFound,
             AgentStoreError::WorkspaceMismatch => Self::AgentRegistrationNotFound,
             AgentStoreError::Invariant(_) | AgentStoreError::Storage(_) => Self::Unexpected,
+        }
+    }
+}
+
+impl From<paw_application::ports::skill_repository::SkillStoreError> for CommandError {
+    fn from(e: paw_application::ports::skill_repository::SkillStoreError) -> Self {
+        use paw_application::ports::skill_repository::SkillStoreError as E;
+        match e {
+            E::NotFound => Self::SkillNotFound,
+            E::WorkspaceMismatch => Self::SkillNotFound,
+            E::Invariant(_) | E::Storage(_) => Self::Unexpected,
+        }
+    }
+}
+
+impl From<paw_application::ports::creator_repository::CreatorStoreError> for CommandError {
+    fn from(e: paw_application::ports::creator_repository::CreatorStoreError) -> Self {
+        use paw_application::ports::creator_repository::CreatorStoreError as E;
+        match e {
+            E::NotFound => Self::CreatorNotFound,
+            E::WorkspaceMismatch => Self::CreatorNotFound,
+            E::Invariant(_) | E::Storage(_) => Self::Unexpected,
+        }
+    }
+}
+
+impl From<paw_application::SkillsError> for CommandError {
+    fn from(e: paw_application::SkillsError) -> Self {
+        use paw_application::SkillsError as E;
+        match e {
+            E::EmptyName => Self::EmptyName,
+            E::NameTooLong { .. } | E::TextTooLong { .. } => Self::NameTooLong,
+            E::AssessmentRequiresEvidence => Self::Unexpected,
+            E::InvalidLevel { .. } => Self::Unexpected,
+        }
+    }
+}
+
+impl From<paw_application::CreatorError> for CommandError {
+    fn from(e: paw_application::CreatorError) -> Self {
+        use paw_application::CreatorError as E;
+        match e {
+            E::EmptyTitle => Self::EmptyName,
+            E::TooLong { .. } => Self::NameTooLong,
+            E::InvalidTransition { .. } | E::VersionNotFound => Self::CreatorStateInvalid,
         }
     }
 }
@@ -3083,4 +3754,286 @@ mod tests {
         assert!(!serialized.contains("UNIQUE"));
         assert!(!serialized.contains("leaky"));
     }
+}
+
+// -- Skill matrix & learning gaps (E6) --------------------------------------
+
+#[tauri::command]
+pub fn create_skill(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    name: String,
+    category: String,
+    notes: Option<String>,
+) -> Result<Skill, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.create_skill(&workspace_id, &name, &category, notes.as_deref())
+}
+
+#[tauri::command]
+pub fn update_skill(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    skill: Skill,
+) -> Result<Skill, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.update_skill(&skill)
+}
+
+#[tauri::command]
+pub fn list_skills(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    category: Option<String>,
+) -> Result<Vec<Skill>, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.list_skills(&workspace_id, category.as_deref())
+}
+
+#[tauri::command]
+pub fn add_skill_evidence(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    skill_id: String,
+    kind: String,
+    source_kind: String,
+    source_id: String,
+    summary: Option<String>,
+) -> Result<SkillEvidence, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.add_skill_evidence(
+        &workspace_id,
+        &skill_id,
+        &kind,
+        &source_kind,
+        &source_id,
+        summary.as_deref(),
+    )
+}
+
+#[tauri::command]
+pub fn list_skill_evidence(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    skill_id: String,
+) -> Result<Vec<SkillEvidence>, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.list_skill_evidence(&workspace_id, &skill_id)
+}
+
+#[tauri::command]
+pub fn create_assessment(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    skill_id: String,
+    level: u8,
+    confidence: String,
+    rationale: Option<String>,
+    evidence_ids: Vec<String>,
+) -> Result<Assessment, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.create_assessment(
+        &workspace_id,
+        &skill_id,
+        level,
+        &confidence,
+        rationale.as_deref(),
+        &evidence_ids,
+    )
+}
+
+#[tauri::command]
+pub fn list_assessments(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    skill_id: String,
+) -> Result<Vec<Assessment>, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.list_assessments(&workspace_id, &skill_id)
+}
+
+#[tauri::command]
+pub fn propose_learning_gap(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    project_id: String,
+    gap: String,
+) -> Result<LearningGapProposal, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.propose_learning_gap(&workspace_id, &project_id, &gap)
+}
+
+#[tauri::command]
+pub fn confirm_learning_gap(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    gap_id: String,
+    item_id: String,
+) -> Result<LearningGapProposal, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.confirm_learning_gap(&workspace_id, &gap_id, &item_id)
+}
+
+#[tauri::command]
+pub fn dismiss_learning_gap(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    gap_id: String,
+) -> Result<LearningGapProposal, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.dismiss_learning_gap(&workspace_id, &gap_id)
+}
+
+#[tauri::command]
+pub fn list_learning_gaps(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    status: Option<String>,
+) -> Result<Vec<LearningGapProposal>, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    let status = status
+        .as_deref()
+        .and_then(paw_application::GapProposalStatus::parse);
+    api.list_learning_gaps(&workspace_id, status)
+}
+
+// -- Creator content pipeline (E6) -------------------------------------------
+
+#[tauri::command]
+pub fn create_creator_topic(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    title: String,
+    notes: Option<String>,
+) -> Result<CreatorTopic, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.create_creator_topic(&workspace_id, &title, notes.as_deref())
+}
+
+#[tauri::command]
+pub fn update_creator_topic(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    topic: CreatorTopic,
+) -> Result<CreatorTopic, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.update_creator_topic(&topic)
+}
+
+#[tauri::command]
+pub fn list_creator_topics(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+) -> Result<Vec<CreatorTopic>, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.list_creator_topics(&workspace_id)
+}
+
+#[tauri::command]
+pub fn create_creator_draft(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    topic_id: String,
+    title: String,
+) -> Result<CreatorDraft, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.create_creator_draft(&workspace_id, &topic_id, &title)
+}
+
+#[tauri::command]
+pub fn append_creator_draft_version(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    draft_id: String,
+    body: String,
+) -> Result<CreatorDraft, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.append_creator_draft_version(&workspace_id, &draft_id, &body)
+}
+
+#[tauri::command]
+pub fn transition_creator_draft(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    draft_id: String,
+    new_status: String,
+) -> Result<CreatorDraft, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.transition_creator_draft(&workspace_id, &draft_id, &new_status)
+}
+
+#[tauri::command]
+pub fn submit_creator_review(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    draft_id: String,
+    version_no: u32,
+    decision: String,
+    comment: Option<String>,
+) -> Result<CreatorDraftReview, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.submit_creator_review(
+        &workspace_id,
+        &draft_id,
+        version_no,
+        &decision,
+        comment.as_deref(),
+    )
+}
+
+#[tauri::command]
+pub fn list_creator_drafts(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+) -> Result<Vec<CreatorDraft>, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.list_creator_drafts(&workspace_id)
+}
+
+#[tauri::command]
+pub fn list_creator_reviews(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    draft_id: String,
+) -> Result<Vec<CreatorDraftReview>, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.list_creator_reviews(&workspace_id, &draft_id)
 }

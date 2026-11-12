@@ -702,7 +702,7 @@ fn backup_restore_preserves_learning_associations() {
         // Snapshot while the adapters are open (online backup API).
         let conn = sqlite::open(&active).unwrap();
         let info = backup::create_backup(&conn, &backup_file).unwrap();
-        assert_eq!(info.schema_version, 9);
+        assert_eq!(info.schema_version, 11);
 
         (
             ws.id.clone(),
@@ -720,7 +720,7 @@ fn backup_restore_preserves_learning_associations() {
     let _ = fs::remove_file(active.with_extension("sqlite-shm"));
 
     let restored = backup::restore_backup(&backup_file, &active).unwrap();
-    assert_eq!(restored.schema_version, 9);
+    assert_eq!(restored.schema_version, 11);
 
     // Every learning association and the event metadata survived.
     {
