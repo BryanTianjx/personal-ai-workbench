@@ -105,6 +105,23 @@ type ProjectRetrospective = {
   summary: string;
   learning_session_refs: string[];
 };
+type RoleProfile = {
+  id: string;
+  workspace_id: string;
+  name: string;
+  plugin_preferences: string[];
+  dashboard_layout: string | null;
+  agent_profile_refs: string[];
+};
+type WorkspaceComposition = {
+  id: string;
+  workspace_id: string;
+  actor_id: string;
+  name: string;
+  profile_ref: string | null;
+  plugin_selection: string[];
+  navigation_config: string | null;
+};
 type KnowledgeRef = {
   id: string;
   workspace_id: string;
@@ -370,6 +387,11 @@ export default function App() {
   const [retroSummary, setRetroSummary] = useState("");
   const [retroSession, setRetroSession] = useState<string>("");
   const [retrospectives, setRetrospectives] = useState<ProjectRetrospective[]>([]);
+  // E7: platform composition state (插件开关 / 角色档案 / 工作区组合).
+  const [pluginStates, setPluginStates] = useState<Array<[string, boolean]>>([]);
+  const [roleProfiles, setRoleProfiles] = useState<RoleProfile[]>([]);
+  const [compositions, setCompositions] = useState<WorkspaceComposition[]>([]);
+  const [profileName, setProfileName] = useState("");
 
   const fail = (e: unknown) => setNotice(describe(e));
 
@@ -480,6 +502,16 @@ export default function App() {
       .catch(fail);
     invoke<CreatorDraft[]>("list_creator_drafts", { workspaceId })
       .then((r) => setCreatorDrafts(r))
+      .catch(fail);
+    // E7 lists: plugin states, role profiles, compositions.
+    invoke<Array<[string, boolean]>>("list_plugin_states", { workspaceId })
+      .then((r) => setPluginStates(r))
+      .catch(fail);
+    invoke<RoleProfile[]>("list_role_profiles", { workspaceId })
+      .then((r) => setRoleProfiles(r))
+      .catch(fail);
+    invoke<WorkspaceComposition[]>("list_workspace_compositions", { workspaceId })
+      .then((r) => setCompositions(r))
       .catch(fail);
   }, [workspaceId, retroProject]);
 
@@ -1048,6 +1080,42 @@ export default function App() {
       );
       setRetroSummary("");
       setRetroSession("");
+    }, reloadAll);
+
+  // ---- E7: platform composition (插件/档案/组合) ----
+  const togglePlugin = (pluginId: string, disabled: boolean) =>
+    run(
+      () =>
+        invoke<void>("set_plugin_disabled", {
+          workspaceId,
+          pluginId,
+          disabled,
+        }),
+      reloadAll,
+    );
+
+  const createProfile = () =>
+    run(() => {
+      return invoke<RoleProfile>("create_role_profile", {
+        workspaceId,
+        name: profileName.trim(),
+        pluginPreferences: [],
+        dashboardLayout: null,
+        agentProfileRefs: [],
+      });
+    }, () => {
+      setProfileName("");
+      reloadAll();
+    });
+
+  const createComposition = (profile: RoleProfile | null) =>
+    run(() => {
+      return invoke<WorkspaceComposition>("create_workspace_composition", {
+        workspaceId,
+        name: profile ? `${profile.name} 组合` : "默认组合",
+        profileRef: profile?.id ?? null,
+        pluginSelection: profile?.plugin_preferences ?? [],
+      });
     }, reloadAll);
 
   // ---- Operation queue actions (E3-04) ----
@@ -2019,6 +2087,63 @@ export default function App() {
                   <strong>{r.summary}</strong>
                   {r.learning_session_refs.length > 0 &&
                     ` · 回流学习记录 ${r.learning_session_refs.length} 条`}
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          {/* Platform composition (E7) */}
+          <section>
+            <h2>平台组合</h2>
+            <p>
+              内置一方插件静态注册（注册/可用性/组合偏好/展示可见性四维独立，ADR-023）；
+              角色档案与组合仅承载体验偏好，永不承载授权——Data Workspace 与后端策略保持唯一安全边界。
+            </p>
+            <h3>插件开关</h3>
+            <ul>
+              {pluginStates.map(([pluginId, disabled]) => (
+                <li key={pluginId}>
+                  <strong>{pluginId}</strong>（{disabled ? "已停用" : "可用"}）{" "}
+                  <button
+                    onClick={() => togglePlugin(pluginId, !disabled)}
+                    disabled={busy}
+                  >
+                    {disabled ? "启用" : "停用"}
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <h3>角色档案与组合</h3>
+            <input
+              value={profileName}
+              onChange={(e) => setProfileName(e.target.value)}
+              placeholder="档案名称（体验模板，非权限）"
+              disabled={busy}
+            />
+            <button onClick={createProfile} disabled={busy || !profileName.trim()}>
+              创建档案
+            </button>
+            <ul>
+              {roleProfiles.length === 0 && <li>暂无角色档案。</li>}
+              {roleProfiles.map((p) => (
+                <li key={p.id}>
+                  <strong>{p.name}</strong>
+                  {p.plugin_preferences.length > 0 &&
+                    ` · 偏好插件 ${p.plugin_preferences.length} 个`}{" "}
+                  <button onClick={() => createComposition(p)} disabled={busy}>
+                    生成组合
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <ul>
+              {compositions.length === 0 && <li>暂无工作区组合。</li>}
+              {compositions.map((c) => (
+                <li key={c.id}>
+                  <strong>{c.name}</strong>
+                  {c.profile_ref !== null && " · 基于角色档案"}
+                  {c.plugin_selection.length > 0 &&
+                    ` · 插件 ${c.plugin_selection.length} 个`}
                 </li>
               ))}
             </ul>

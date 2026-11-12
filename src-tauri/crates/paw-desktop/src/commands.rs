@@ -27,8 +27,8 @@ use paw_application::{
     CreatorDraft, CreatorDraftReview, CreatorDraftVersion, CreatorTopic, Goal, GoalId, Item,
     ItemId, ItemKind, ItemStatus, KnowledgeRefId, KnowledgeSource, LearningGapProposal, Plan,
     PlanId, PlanStatus, Project, ProjectId, ProjectRetrospective, ProjectStatus, Roadmap,
-    RoadmapId, Session, Skill, SkillEvidence, Task, TaskId, TaskStatus, ValidationError, Workspace,
-    WorkspaceId,
+    RoadmapId, RoleProfile, Session, Skill, SkillEvidence, Task, TaskId, TaskStatus,
+    ValidationError, Workspace, WorkspaceComposition, WorkspaceId,
 };
 use paw_infrastructure::repositories::agent_governance::{
     SqliteAgentExecutionRepository, SqliteAgentGrantRepository, SqliteAgentRegistrationRepository,
@@ -195,6 +195,11 @@ pub struct WorkManagementApi {
     publish_records:
         paw_infrastructure::repositories::creator::SqliteCreatorPublishRecordRepository,
     retrospectives: paw_infrastructure::repositories::retrospectives::SqliteRetrospectiveRepository,
+    /// Platform composition stores (E7).
+    plugin_states: paw_infrastructure::repositories::platform::SqlitePluginStateRepository,
+    role_profiles: paw_infrastructure::repositories::platform::SqliteRoleProfileRepository,
+    compositions: paw_infrastructure::repositories::platform::SqliteCompositionRepository,
+    plugin_registry: paw_application::ports::plugin_registry::PluginRegistry,
     audit: SqliteAuditSink,
 }
 
@@ -289,6 +294,19 @@ impl WorkManagementApi {
                 paw_infrastructure::repositories::retrospectives::SqliteRetrospectiveRepository::open(
                     db_path,
                 )?,
+            plugin_states:
+                paw_infrastructure::repositories::platform::SqlitePluginStateRepository::open(
+                    db_path,
+                )?,
+            role_profiles:
+                paw_infrastructure::repositories::platform::SqliteRoleProfileRepository::open(
+                    db_path,
+                )?,
+            compositions:
+                paw_infrastructure::repositories::platform::SqliteCompositionRepository::open(
+                    db_path,
+                )?,
+            plugin_registry: build_plugin_registry(),
             audit: SqliteAuditSink::open(db_path)?,
         })
     }
@@ -2119,6 +2137,177 @@ impl WorkManagementApi {
             .map_err(CommandError::from_learning)
     }
 
+    // -- Platform composition (E7, ADR-023/024/025) -------------------------------
+
+    /// Set a plugin's disable preference (composition/availability
+    /// dimension only — registration is static, authorization unchanged).
+    /// Disabling blocks NEW invocations of the plugin's capabilities while
+    /// data, audit and in-flight Operations stay intact (ADR-019).
+    pub fn set_plugin_disabled(
+        &self,
+        workspace_id: &WorkspaceId,
+        plugin_id: &str,
+        disabled: bool,
+    ) -> Result<(), CommandError> {
+        let ctx = self.context();
+        check_gate(
+            &self.authorizer,
+            &self.audit,
+            &ctx,
+            &paw_application::ports::authorization::ProtectedAction::UpdateSkill {
+                workspace_id: workspace_id.clone(),
+            },
+            Some(workspace_id),
+            "plugin_state",
+            Some(plugin_id),
+        )?;
+        // Only statically-registered plugins may be toggled.
+        if self
+            .plugin_registry
+            .owner_of(&format!("__probe__{plugin_id}"))
+            .is_none()
+            && !self
+                .plugin_registry
+                .plugin_ids()
+                .contains(&plugin_id.to_string())
+        {
+            return Err(CommandError::PluginDisabled);
+        }
+        use paw_application::ports::platform_repository::PluginStateRepository as _;
+        self.plugin_states
+            .set_disabled(workspace_id, plugin_id, disabled)
+            .map_err(CommandError::from)?;
+        self.audit
+            .record(&paw_application::ports::audit::AuditEvent {
+                workspace_id: Some(workspace_id.clone()),
+                actor_id: ctx.actor_id.clone(),
+                action: "plugin.disable.toggle",
+                resource_type: "plugin_state",
+                resource_id: Some(plugin_id.to_string()),
+                outcome: paw_application::ports::audit::AuditOutcome::Allowed,
+                correlation_id: ctx.correlation_id.clone(),
+            });
+        Ok(())
+    }
+
+    pub fn list_plugin_states(
+        &self,
+        workspace_id: &WorkspaceId,
+    ) -> Result<Vec<(String, bool)>, CommandError> {
+        use paw_application::ports::platform_repository::PluginStateRepository as _;
+        let disabled = self
+            .plugin_states
+            .list_disabled(workspace_id)
+            .map_err(CommandError::from)?;
+        Ok(self
+            .plugin_registry
+            .plugin_ids()
+            .into_iter()
+            .map(|id| {
+                let is_disabled = disabled.contains(&id);
+                (id, is_disabled)
+            })
+            .collect())
+    }
+
+    pub fn create_role_profile(
+        &self,
+        workspace_id: &WorkspaceId,
+        name: &str,
+        plugin_preferences: Vec<String>,
+        dashboard_layout: Option<&str>,
+        agent_profile_refs: Vec<String>,
+    ) -> Result<RoleProfile, CommandError> {
+        let ctx = self.context();
+        check_gate(
+            &self.authorizer,
+            &self.audit,
+            &ctx,
+            &paw_application::ports::authorization::ProtectedAction::CreateSkill {
+                workspace_id: workspace_id.clone(),
+            },
+            Some(workspace_id),
+            "role_profile",
+            None,
+        )?;
+        let profile = RoleProfile::new(
+            paw_application::ProfileId::new_v7(),
+            workspace_id.clone(),
+            name,
+            plugin_preferences,
+            dashboard_layout,
+            agent_profile_refs,
+        )
+        .map_err(CommandError::from)?;
+        use paw_application::ports::platform_repository::RoleProfileRepository as _;
+        self.role_profiles
+            .insert_profile(&profile)
+            .map_err(CommandError::from)?;
+        Ok(profile)
+    }
+
+    pub fn list_role_profiles(
+        &self,
+        workspace_id: &WorkspaceId,
+    ) -> Result<Vec<RoleProfile>, CommandError> {
+        use paw_application::ports::platform_repository::RoleProfileRepository as _;
+        self.role_profiles
+            .list_profiles(workspace_id)
+            .map_err(CommandError::from)
+    }
+
+    pub fn create_workspace_composition(
+        &self,
+        workspace_id: &WorkspaceId,
+        name: &str,
+        profile_ref: Option<&str>,
+        plugin_selection: Vec<String>,
+    ) -> Result<WorkspaceComposition, CommandError> {
+        let ctx = self.context();
+        check_gate(
+            &self.authorizer,
+            &self.audit,
+            &ctx,
+            &paw_application::ports::authorization::ProtectedAction::CreateSkill {
+                workspace_id: workspace_id.clone(),
+            },
+            Some(workspace_id),
+            "workspace_composition",
+            None,
+        )?;
+        let profile = match profile_ref {
+            Some(r) => Some(
+                paw_application::ProfileId::new(r).map_err(|_| CommandError::InvalidWorkspaceId)?,
+            ),
+            None => None,
+        };
+        let composition = WorkspaceComposition::new(
+            paw_application::CompositionId::new_v7(),
+            workspace_id.clone(),
+            LOCAL_ACTOR_ID,
+            name,
+            profile,
+            plugin_selection,
+            None,
+        )
+        .map_err(CommandError::from)?;
+        use paw_application::ports::platform_repository::CompositionRepository as _;
+        self.compositions
+            .insert_composition(&composition)
+            .map_err(CommandError::from)?;
+        Ok(composition)
+    }
+
+    pub fn list_workspace_compositions(
+        &self,
+        workspace_id: &WorkspaceId,
+    ) -> Result<Vec<WorkspaceComposition>, CommandError> {
+        use paw_application::ports::platform_repository::CompositionRepository as _;
+        self.compositions
+            .list_compositions(workspace_id, Some(LOCAL_ACTOR_ID))
+            .map_err(CommandError::from)
+    }
+
     // -- Agent governance (E5, PAW-INF-005/006) ----------------------------------
 
     fn coordinator(
@@ -2274,6 +2463,31 @@ impl WorkManagementApi {
         )?;
         let id = paw_application::AgentRegistrationId::new(registration_id)
             .map_err(|_| CommandError::InvalidWorkspaceId)?;
+        // Plugin disable gate (E7-02, ADR-023 §R1): a disabled plugin's
+        // capabilities refuse NEW invocations while data, audit history and
+        // in-flight Operations stay intact (ADR-019 drain/reconcile).
+        {
+            use paw_application::ports::platform_repository::PluginStateRepository as _;
+            if let Some(owner) = self.plugin_registry.owner_of(capability_id) {
+                let disabled = self
+                    .plugin_states
+                    .is_disabled(workspace_id, owner)
+                    .map_err(|_| CommandError::Unexpected)?;
+                if disabled {
+                    self.audit
+                        .record(&paw_application::ports::audit::AuditEvent {
+                            workspace_id: Some(workspace_id.clone()),
+                            actor_id: ctx.actor_id.clone(),
+                            action: "agent.invoke.propose",
+                            resource_type: "plugin",
+                            resource_id: Some(owner.to_string()),
+                            outcome: paw_application::ports::audit::AuditOutcome::Denied,
+                            correlation_id: ctx.correlation_id.clone(),
+                        });
+                    return Err(CommandError::PluginDisabled);
+                }
+            }
+        }
         let version = parse_contract_version(contract_version)?;
         let parameters: BTreeMap<String, paw_application::ports::canonical_plan::PlanValue> =
             serde_json::from_str(parameters_json).unwrap_or_default();
@@ -2591,6 +2805,8 @@ pub enum CommandError {
     CapabilityUnsupported,
     /// The referenced skill does not exist (E6).
     SkillNotFound,
+    /// The owning plugin is disabled in this workspace (E7; ADR-023).
+    PluginDisabled,
     /// The referenced creator record does not exist (E6).
     CreatorNotFound,
     /// A creator state transition was refused by the domain machine (E6).
@@ -2743,6 +2959,16 @@ impl From<AgentStoreError> for CommandError {
     }
 }
 
+impl From<paw_application::ports::platform_repository::PlatformStoreError> for CommandError {
+    fn from(e: paw_application::ports::platform_repository::PlatformStoreError) -> Self {
+        use paw_application::ports::platform_repository::PlatformStoreError as E;
+        match e {
+            E::NotFound | E::WorkspaceMismatch => Self::CreatorNotFound,
+            E::Invariant(_) | E::Storage(_) => Self::Unexpected,
+        }
+    }
+}
+
 impl From<paw_application::ports::skill_repository::SkillStoreError> for CommandError {
     fn from(e: paw_application::ports::skill_repository::SkillStoreError) -> Self {
         use paw_application::ports::skill_repository::SkillStoreError as E;
@@ -2784,6 +3010,17 @@ impl From<paw_application::CreatorError> for CommandError {
             E::EmptyTitle => Self::EmptyName,
             E::TooLong { .. } => Self::NameTooLong,
             E::InvalidTransition { .. } | E::VersionNotFound => Self::CreatorStateInvalid,
+        }
+    }
+}
+
+impl From<paw_application::CompositionError> for CommandError {
+    fn from(e: paw_application::CompositionError) -> Self {
+        use paw_application::CompositionError as E;
+        match e {
+            E::EmptyName => Self::EmptyName,
+            E::TooLong { .. } => Self::NameTooLong,
+            E::UnknownReference { .. } => Self::PluginDisabled,
         }
     }
 }
@@ -4262,4 +4499,167 @@ pub fn list_retrospectives(
         .lock()
         .expect("WorkManagementApi mutex must not be poisoned");
     api.list_retrospectives(&workspace_id, &project_id)
+}
+
+// -- E7: static first-party plugin catalog (registration = code; disable
+//    preference = per-workspace persisted state; ADR-023/027) --------------
+
+/// The statically registered plugin catalog. Each built-in domain becomes
+/// one first-party plugin over its existing use cases — composition layer
+/// only, never a domain redesign (ADR-027 §R1). Ownership invariants:
+/// Work Management keeps Project/Task, Learning keeps its entities,
+/// Knowledge keeps Note/KnowledgeRef, AI Collaboration keeps the agent
+/// lifecycle, System & Security keeps policy/configuration.
+pub fn build_plugin_registry() -> paw_application::ports::plugin_registry::PluginRegistry {
+    use paw_application::ports::plugin_registry::{
+        PluginDependencyRef, PluginDescriptor, PluginRegistry,
+    };
+    let mut registry = PluginRegistry::new();
+    let mut register =
+        |id: &str, version: (u32, u32, u32), required: Vec<&str>, capabilities: Vec<&str>| {
+            registry
+                .register(PluginDescriptor {
+                    id: id.to_string(),
+                    plugin_version: version,
+                    descriptor_schema_version: 1,
+                    owned_capabilities: capabilities.into_iter().map(str::to_string).collect(),
+                    required_dependencies: required
+                        .into_iter()
+                        .map(|d| PluginDependencyRef {
+                            id: d.to_string(),
+                            min_version: (1, 0, 0),
+                        })
+                        .collect(),
+                    optional_dependencies: Vec::new(),
+                })
+                .expect("static plugin catalog is valid");
+        };
+    // Core shell has no dependencies; domains that compose others depend on
+    // them explicitly (E6 已用到的跨域能力即依赖关系).
+    register(
+        "core.work_management",
+        (1, 0, 0),
+        vec![],
+        vec![
+            "work_management.task.create",
+            "work_management.task.update",
+            "work_management.task.delete",
+        ],
+    );
+    register(
+        "core.learning_growth",
+        (1, 0, 0),
+        vec!["core.work_management"],
+        vec!["learning.item.create"],
+    );
+    register(
+        "core.knowledge_context",
+        (1, 0, 0),
+        vec![],
+        vec!["knowledge.ref.create", "knowledge.ref.update"],
+    );
+    register(
+        "core.ai_collaboration",
+        (1, 0, 0),
+        vec!["core.work_management"],
+        vec!["data.export"],
+    );
+    register(
+        "core.system_security",
+        (1, 0, 0),
+        vec![],
+        vec!["data.purge"],
+    );
+    registry
+        .validate_graph()
+        .expect("static plugin catalog dependency graph is valid");
+    registry
+}
+
+// -- Platform composition (E7) -----------------------------------------------
+
+#[tauri::command]
+pub fn set_plugin_disabled(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    plugin_id: String,
+    disabled: bool,
+) -> Result<(), CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.set_plugin_disabled(&workspace_id, &plugin_id, disabled)
+}
+
+#[tauri::command]
+pub fn list_plugin_states(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+) -> Result<Vec<(String, bool)>, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.list_plugin_states(&workspace_id)
+}
+
+#[tauri::command]
+pub fn create_role_profile(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    name: String,
+    plugin_preferences: Vec<String>,
+    dashboard_layout: Option<String>,
+    agent_profile_refs: Vec<String>,
+) -> Result<RoleProfile, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.create_role_profile(
+        &workspace_id,
+        &name,
+        plugin_preferences,
+        dashboard_layout.as_deref(),
+        agent_profile_refs,
+    )
+}
+
+#[tauri::command]
+pub fn list_role_profiles(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+) -> Result<Vec<RoleProfile>, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.list_role_profiles(&workspace_id)
+}
+
+#[tauri::command]
+pub fn create_workspace_composition(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+    name: String,
+    profile_ref: Option<String>,
+    plugin_selection: Vec<String>,
+) -> Result<WorkspaceComposition, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.create_workspace_composition(
+        &workspace_id,
+        &name,
+        profile_ref.as_deref(),
+        plugin_selection,
+    )
+}
+
+#[tauri::command]
+pub fn list_workspace_compositions(
+    state: tauri::State<'_, std::sync::Mutex<WorkManagementApi>>,
+    workspace_id: WorkspaceId,
+) -> Result<Vec<WorkspaceComposition>, CommandError> {
+    let api = state
+        .lock()
+        .expect("WorkManagementApi mutex must not be poisoned");
+    api.list_workspace_compositions(&workspace_id)
 }

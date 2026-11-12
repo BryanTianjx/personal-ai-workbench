@@ -12,6 +12,7 @@ pub mod creator;
 pub mod knowledge;
 pub mod learning;
 pub mod operation_machine;
+pub mod platform;
 pub mod skills;
 pub mod work_management;
 
