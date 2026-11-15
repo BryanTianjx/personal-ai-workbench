@@ -360,7 +360,11 @@ fn clear_managed_attachments(active_path: &Path) -> Result<(), BackupError> {
 }
 
 /// Validate a snapshot file read-only: integrity, foreign keys, metadata.
-fn validate_snapshot(path: &Path) -> Result<RestoreInfo, BackupError> {
+///
+/// Public so callers can preview a snapshot's metadata (and reject invalid
+/// files) before staging a restore or asking the user to confirm; the desktop
+/// layer uses this for both.
+pub fn validate_snapshot(path: &Path) -> Result<RestoreInfo, BackupError> {
     let conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
     require_integrity(&conn)?;
     require_no_fk_violations(&conn)?;

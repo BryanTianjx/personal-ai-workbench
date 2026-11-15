@@ -33,6 +33,8 @@ export const COMMAND_ERROR_CODES = [
   "creator_not_found",
   "creator_state_invalid",
   "denied",
+  "backup_not_found",
+  "backup_invalid",
   "unexpected",
 ] as const;
 
@@ -73,6 +75,8 @@ export const ERROR_TEXT: Record<CommandError, string> = {
   creator_not_found: "创作记录不存在。",
   creator_state_invalid: "创作流程状态不允许该操作。",
   denied: "操作被拒绝。",
+  backup_not_found: "备份文件不存在。",
+  backup_invalid: "备份文件无效或已损坏。",
   unexpected: "操作失败，请重试。",
 };
 
@@ -104,6 +108,8 @@ const ERROR_CATEGORY: Record<CommandError, ErrorCategory> = {
   creator_not_found: "not_found",
   creator_state_invalid: "conflict",
   denied: "permission",
+  backup_not_found: "not_found",
+  backup_invalid: "conflict",
   unexpected: "internal",
 };
 

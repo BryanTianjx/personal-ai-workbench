@@ -2839,6 +2839,12 @@ pub enum CommandError {
     CreatorStateInvalid,
     /// Fresh authorization refused the protected side effect (E1-09).
     Denied,
+    /// The requested backup file does not exist in the managed backups
+    /// directory (or the name failed the safety check).
+    BackupNotFound,
+    /// The backup snapshot failed validation (integrity, foreign keys or
+    /// the self-describing metadata guarantee).
+    BackupInvalid,
     /// Any other failure; details stay on the Rust side.
     Unexpected,
 }

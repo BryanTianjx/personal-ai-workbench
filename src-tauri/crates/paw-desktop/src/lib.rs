@@ -21,6 +21,7 @@ use commands::WorkManagementApi;
 use paw_infrastructure::sqlite;
 use tauri::Manager;
 
+pub mod backup;
 pub mod commands;
 
 /// Resolve the SQLite migrations directory.
@@ -39,9 +40,10 @@ pub mod commands;
 /// If none of these exist the error is explicit and actionable instead of a
 /// cryptic `read_dir` failure inside `sqlite::migrate`.
 fn resolve_migrations_dir() -> Result<PathBuf, String> {
-    let deployed = std::env::current_exe()
-        .ok()
-        .and_then(|exe| exe.parent().map(|parent| parent.join("migrations").join("sqlite")));
+    let deployed = std::env::current_exe().ok().and_then(|exe| {
+        exe.parent()
+            .map(|parent| parent.join("migrations").join("sqlite"))
+    });
     pick_migrations_dir(
         std::env::var_os("PAW_MIGRATIONS_DIR"),
         deployed,
@@ -79,6 +81,14 @@ fn bootstrap_state(app: &tauri::App) -> Result<WorkManagementApi, Box<dyn std::e
     fs::create_dir_all(&data_dir)?;
 
     let db_path = data_dir.join("app.sqlite");
+    // Apply a staged restore (if any) before any connection opens — the only
+    // safe point to replace the active database on Windows. A rejected
+    // snapshot is removed here and the existing database keeps booting.
+    match backup::apply_pending_restore(&db_path) {
+        Ok(backup::PendingRestoreOutcome::Restored) => {}
+        Ok(_) => {}
+        Err(failure) => return Err(failure.to_string().into()),
+    }
     {
         let mut conn = sqlite::open(&db_path)?;
         sqlite::migrate(&mut conn, &resolve_migrations_dir()?)?;
@@ -180,6 +190,12 @@ pub fn run() {
             commands::create_workspace_composition,
             commands::list_workspace_compositions,
             commands::list_roadmaps,
+            backup::create_backup,
+            backup::list_backups,
+            backup::read_backup_info,
+            backup::request_restore,
+            backup::pending_restore_status,
+            backup::cancel_pending_restore,
             commands::create_roadmap,
             commands::delete_roadmap,
             commands::list_plans,
@@ -214,13 +230,15 @@ mod migration_resolution_tests {
 
     /// An existing directory to stand in for candidates that must "exist".
     fn existing_dir(tag: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("paw-mig-resolve-{tag}-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("paw-mig-resolve-{tag}-{}", std::process::id()));
         fs::create_dir_all(&dir).unwrap();
         dir
     }
 
     fn nonexistent_dir(tag: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("paw-mig-missing-{tag}-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("paw-mig-missing-{tag}-{}", std::process::id()));
         assert!(!dir.exists(), "test path unexpectedly exists: {dir:?}");
         dir
     }
@@ -270,9 +288,15 @@ mod migration_resolution_tests {
     fn source_tree_fallback_only_when_it_exists() {
         let missing_source = nonexistent_dir("fallback-source");
         let resolved = pick_migrations_dir(None, None, missing_source.clone());
-        assert!(resolved.is_err(), "no candidate exists, resolution must fail");
+        assert!(
+            resolved.is_err(),
+            "no candidate exists, resolution must fail"
+        );
         let message = resolved.unwrap_err();
-        assert!(message.contains("PAW_MIGRATIONS_DIR"), "actionable message, got: {message}");
+        assert!(
+            message.contains("PAW_MIGRATIONS_DIR"),
+            "actionable message, got: {message}"
+        );
     }
 
     #[test]

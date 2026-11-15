@@ -16,7 +16,15 @@ import {
 } from "lucide-react";
 import { useWorkspace } from "../../app/providers/WorkspaceProvider";
 import { PageHeader } from "../../components/layout/Shell";
-import { OPERATION_STATUS_META } from "../../components/data-display/status";
+import { formatBytes, OPERATION_STATUS_META } from "../../components/data-display/status";
+import {
+  cancelPendingRestore,
+  createBackup,
+  listBackups,
+  pendingRestoreStatus,
+  requestRestore,
+  type BackupFileMetaDto,
+} from "../../services/ipc/commands/backup";
 import {
   Button,
   EmptyState,
@@ -63,6 +71,53 @@ export function SettingsPage({ navigate }: { navigate: (path: string) => void })
     () => (workspaceId ? listQuarantinedMessages(workspaceId) : Promise.resolve([])),
     [workspaceId],
   );
+  // Backup state is device-scoped, not workspace-scoped.
+  const backups = useAsyncData(() => listBackups(), []);
+  const restoreStatus = useAsyncData(() => pendingRestoreStatus(), []);
+  const [creatingBackup, setCreatingBackup] = useState(false);
+  const [restoringBackup, setRestoringBackup] = useState<BackupFileMetaDto | null>(null);
+  const [restoreBusy, setRestoreBusy] = useState(false);
+
+  const runCreateBackup = async () => {
+    if (creatingBackup) return;
+    setCreatingBackup(true);
+    try {
+      const snapshot = await createBackup();
+      toast.success(`备份已创建：${snapshot.file_name}`);
+      backups.reload();
+    } catch (cause) {
+      toast.error(describe(cause));
+    } finally {
+      setCreatingBackup(false);
+    }
+  };
+
+  const runRestore = async () => {
+    if (!restoringBackup || restoreBusy) return;
+    setRestoreBusy(true);
+    try {
+      // Stages the snapshot and restarts the shell; on success this promise
+      // never resolves (the apply happens at next bootstrap).
+      await requestRestore(restoringBackup.file_name);
+      toast.info("恢复已暂存，重启应用后生效。");
+      setRestoringBackup(null);
+      restoreStatus.reload();
+    } catch (cause) {
+      toast.error(describe(cause));
+    } finally {
+      setRestoreBusy(false);
+    }
+  };
+
+  const runCancelRestore = async () => {
+    try {
+      await cancelPendingRestore();
+      toast.success("已放弃暂存的恢复。");
+      restoreStatus.reload();
+    } catch (cause) {
+      toast.error(describe(cause));
+    }
+  };
 
   const createWorkspaceSubmit = async () => {
     const trimmed = newWorkspaceName.trim();
@@ -307,6 +362,88 @@ export function SettingsPage({ navigate }: { navigate: (path: string) => void })
         </div>
       </Panel>
 
+      <Panel
+        title="数据保护"
+        description="数据库快照（在线备份 API，自校验）。附件字节不在快照内（REL-006），恢复后附件目录会被清空。"
+        actions={
+          <Button size="small" variant="primary" onClick={() => void runCreateBackup()} loading={creatingBackup}>
+            <Database size={14} aria-hidden />
+            立即备份
+          </Button>
+        }
+      >
+        {restoreStatus.data?.pending && (
+          <div
+            role="status"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "var(--space-2)",
+              padding: "var(--space-3)",
+              background: "var(--color-warning-bg)",
+              color: "var(--color-warning)",
+              borderRadius: "var(--radius-sm)",
+              fontSize: "var(--type-body-small-size)",
+              marginBottom: "var(--space-3)",
+            }}
+          >
+            <TriangleAlert size={15} aria-hidden />
+            存在待恢复的数据库快照，将在下次启动应用时生效。
+            <Button size="small" style={{ marginLeft: "auto" }} onClick={() => void runCancelRestore()}>
+              放弃恢复
+            </Button>
+          </div>
+        )}
+        {backups.error ? (
+          <ErrorState message={backups.error} onRetry={backups.reload} />
+        ) : backups.loading ? (
+          <SkeletonRows rows={2} />
+        ) : (backups.data ?? []).length === 0 ? (
+          <EmptyState
+            icon={<Database size={22} aria-hidden />}
+            title="暂无备份"
+            hint="立即备份会生成一个自校验的数据库快照，保存在应用数据目录的 backups/ 下。"
+          />
+        ) : (
+          <div style={{ margin: "0 calc(var(--space-4) * -1)" }}>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th scope="col">备份文件</th>
+                  <th scope="col">快照信息</th>
+                  <th scope="col">大小</th>
+                  <th scope="col" style={{ width: 96 }}>
+                    操作
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {(backups.data ?? []).map((backup) => (
+                  <tr key={backup.file_name}>
+                    <td style={{ fontWeight: 500, overflowWrap: "anywhere" }}>{backup.file_name}</td>
+                    <td className="cell-muted">
+                      {backup.valid && backup.info
+                        ? `schema v${backup.info.schema_version} · ${new Date(backup.info.created_at).toLocaleString("zh-CN", { hour12: false })}`
+                        : "不可用（校验失败）"}
+                    </td>
+                    <td className="cell-muted">{formatBytes(backup.size_bytes)}</td>
+                    <td>
+                      {backup.valid ? (
+                        <Button size="small" onClick={() => setRestoringBackup(backup)}>
+                          恢复
+                        </Button>
+                      ) : (
+                        <span className="badge danger">不可用</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Panel>
+
       <Panel title="开发控制台" description="旧版功能验证界面（E4–E7 证据流程使用），非生产界面。">
         <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)" }}>
           <Hammer size={18} aria-hidden style={{ color: "var(--color-text-muted)" }} />
@@ -347,6 +484,32 @@ export function SettingsPage({ navigate }: { navigate: (path: string) => void })
         confirmLabel="立即清理"
         onConfirm={() => void purge()}
         onCancel={() => setPurgeOpen(false)}
+      />
+
+      <ConfirmDialog
+        open={restoringBackup != null}
+        title="恢复数据库"
+        danger
+        busy={restoreBusy}
+        message={
+          <>
+            将用快照「<strong>{restoringBackup?.file_name}</strong>」替换当前数据库（
+            {restoringBackup?.info
+              ? `schema v${restoringBackup.info.schema_version}，创建于 ${new Date(restoringBackup.info.created_at).toLocaleString("zh-CN", { hour12: false })}`
+              : "信息不可用"}
+            ）。
+            <br />
+            <br />
+            附件文件不随备份恢复（REL-006）：恢复后当前附件目录将被清空，需要重新添加附件。
+            <br />
+            快照会在应用下次启动时生效；现在将自动重启应用。
+          </>
+        }
+        confirmLabel="恢复并重启"
+        onConfirm={() => void runRestore()}
+        onCancel={() => {
+          if (!restoreBusy) setRestoringBackup(null);
+        }}
       />
     </>
   );
