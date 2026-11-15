@@ -27,24 +27,48 @@ pub mod commands;
 ///
 /// Resolution order:
 /// 1. `PAW_MIGRATIONS_DIR` environment variable (tests, packaging overrides);
-/// 2. `migrations/sqlite` next to the running executable (deployed layout);
-/// 3. the source-tree location relative to this crate's manifest (dev and
-///    evidence builds run from the workspace checkout, so the absolute
-///    compile-time path is valid on the build machine).
-fn resolve_migrations_dir() -> PathBuf {
-    if let Some(dir) = std::env::var_os("PAW_MIGRATIONS_DIR") {
-        return PathBuf::from(dir);
+/// 2. `migrations/sqlite` next to the running executable — the deployed
+///    layout. `bundle.resources` maps `src-tauri/migrations/sqlite/*.sql`
+///    there for NSIS/MSI installs (on Windows the resource directory is the
+///    executable directory), so a clean install finds migrations without a
+///    source checkout (PAW-AUDIT-001);
+/// 3. the source-tree location relative to this crate's manifest — only
+///    accepted when it actually exists at runtime (dev and evidence builds
+///    run from the workspace checkout).
+///
+/// If none of these exist the error is explicit and actionable instead of a
+/// cryptic `read_dir` failure inside `sqlite::migrate`.
+fn resolve_migrations_dir() -> Result<PathBuf, String> {
+    let deployed = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|parent| parent.join("migrations").join("sqlite")));
+    pick_migrations_dir(
+        std::env::var_os("PAW_MIGRATIONS_DIR"),
+        deployed,
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../migrations/sqlite"),
+    )
+}
+
+/// Pure decision core of [`resolve_migrations_dir`], separated so the
+/// precedence rules are testable without mutating process state.
+fn pick_migrations_dir(
+    env_override: Option<std::ffi::OsString>,
+    deployed: Option<PathBuf>,
+    source: PathBuf,
+) -> Result<PathBuf, String> {
+    if let Some(dir) = env_override {
+        return Ok(PathBuf::from(dir));
     }
-    let deployed = std::env::current_exe().ok().and_then(|exe| {
-        exe.parent()
-            .map(|parent| parent.join("migrations").join("sqlite"))
-    });
-    if let Some(candidate) = deployed
-        && candidate.is_dir()
-    {
-        return candidate;
+    if let Some(candidate) = deployed.filter(|candidate| candidate.is_dir()) {
+        return Ok(candidate);
     }
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../migrations/sqlite")
+    if source.is_dir() {
+        return Ok(source);
+    }
+    Err(String::from(
+        "SQLite migrations directory not found: expected migrations/sqlite next \
+         to the executable (bundled via bundle.resources) or set PAW_MIGRATIONS_DIR",
+    ))
 }
 
 /// Bootstrap the persistent application state (ADR-006: one authoritative
@@ -57,7 +81,7 @@ fn bootstrap_state(app: &tauri::App) -> Result<WorkManagementApi, Box<dyn std::e
     let db_path = data_dir.join("app.sqlite");
     {
         let mut conn = sqlite::open(&db_path)?;
-        sqlite::migrate(&mut conn, &resolve_migrations_dir())?;
+        sqlite::migrate(&mut conn, &resolve_migrations_dir()?)?;
         // Connection dropped here: the API reopens the database with the
         // connection policy; a single connection is held at a time (E1
         // desktop is single-window, single-user).
@@ -180,4 +204,93 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running the Tauri application");
+}
+
+#[cfg(test)]
+mod migration_resolution_tests {
+    use super::*;
+    use std::fs;
+    use std::path::Path;
+
+    /// An existing directory to stand in for candidates that must "exist".
+    fn existing_dir(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("paw-mig-resolve-{tag}-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn nonexistent_dir(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("paw-mig-missing-{tag}-{}", std::process::id()));
+        assert!(!dir.exists(), "test path unexpectedly exists: {dir:?}");
+        dir
+    }
+
+    fn cleanup(dir: &Path) {
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn explicit_env_override_wins_over_everything() {
+        let env_dir = existing_dir("env-override");
+        let deployed = existing_dir("override-deployed");
+        let source = existing_dir("override-source");
+        let resolved = pick_migrations_dir(
+            Some(env_dir.clone().into_os_string()),
+            Some(deployed.clone()),
+            source.clone(),
+        )
+        .unwrap();
+        assert_eq!(resolved, env_dir);
+        cleanup(&env_dir);
+        cleanup(&deployed);
+        cleanup(&source);
+    }
+
+    #[test]
+    fn deployed_layout_wins_over_source_tree() {
+        let deployed = existing_dir("wins-deployed");
+        let source = existing_dir("wins-source");
+        let resolved = pick_migrations_dir(None, Some(deployed.clone()), source.clone()).unwrap();
+        assert_eq!(resolved, deployed);
+        cleanup(&deployed);
+        cleanup(&source);
+    }
+
+    #[test]
+    fn deployed_candidate_must_exist_to_qualify() {
+        let missing_deployed = nonexistent_dir("qualify-deployed");
+        let source = existing_dir("qualify-source");
+        let resolved =
+            pick_migrations_dir(None, Some(missing_deployed.clone()), source.clone()).unwrap();
+        assert_eq!(resolved, source);
+        cleanup(&source);
+    }
+
+    #[test]
+    fn source_tree_fallback_only_when_it_exists() {
+        let missing_source = nonexistent_dir("fallback-source");
+        let resolved = pick_migrations_dir(None, None, missing_source.clone());
+        assert!(resolved.is_err(), "no candidate exists, resolution must fail");
+        let message = resolved.unwrap_err();
+        assert!(message.contains("PAW_MIGRATIONS_DIR"), "actionable message, got: {message}");
+    }
+
+    #[test]
+    fn missing_deployed_with_existing_source_resolves_to_source() {
+        let missing_deployed = nonexistent_dir("missing-deployed");
+        let source = existing_dir("missing-source");
+        let resolved =
+            pick_migrations_dir(None, Some(missing_deployed.clone()), source.clone()).unwrap();
+        assert_eq!(resolved, source);
+        cleanup(&source);
+    }
+
+    #[test]
+    fn real_source_tree_resolves_in_workspace_checkout() {
+        // In a dev/evidence run from the checkout the source fallback must hold,
+        // which is what every existing migration test relies on.
+        let source = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../migrations/sqlite");
+        let resolved = pick_migrations_dir(None, None, source.clone()).unwrap();
+        assert_eq!(resolved, source);
+    }
 }

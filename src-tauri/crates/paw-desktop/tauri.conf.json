@@ -32,6 +32,9 @@
   "bundle": {
     "active": true,
     "targets": ["nsis", "msi"],
+    "resources": {
+      "../../migrations/sqlite/*.sql": "migrations/sqlite/"
+    },
     "icon": ["icons/icon.ico"],
     "windows": {
       "wix": {
