@@ -236,6 +236,33 @@ type Skill = {
   scale_version: number;
   notes: string | null;
 };
+type SkillEvidence = {
+  id: string;
+  workspace_id: string;
+  skill_id: string;
+  kind:
+    | "concept_explanation"
+    | "practice"
+    | "experiment"
+    | "implementation"
+    | "test_verification"
+    | "project_delivery"
+    | "tech_review"
+    | "teaching_documentation";
+  source_kind: "artifact" | "note" | "knowledge_ref" | "task" | "project";
+  source_id: string;
+  summary: string | null;
+};
+type Assessment = {
+  id: string;
+  workspace_id: string;
+  skill_id: string;
+  level: number;
+  scale_version: number;
+  confidence: "low" | "medium" | "high";
+  rationale: string | null;
+  evidence_ids: string[];
+};
 type LearningGapProposal = {
   id: string;
   workspace_id: string;
@@ -380,6 +407,18 @@ export default function App() {
   const [creatorDrafts, setCreatorDrafts] = useState<CreatorDraft[]>([]);
   const [skillName, setSkillName] = useState("");
   const [skillCategory, setSkillCategory] = useState("");
+  // E6 证据/评估明细（按 skill 展开，惰性加载）。
+  const [expandedSkill, setExpandedSkill] = useState<string | null>(null);
+  const [skillEvidenceMap, setSkillEvidenceMap] = useState<Record<string, SkillEvidence[]>>({});
+  const [skillAssessments, setSkillAssessments] = useState<Record<string, Assessment[]>>({});
+  const [evKind, setEvKind] = useState<SkillEvidence["kind"]>("implementation");
+  const [evSourceKind, setEvSourceKind] = useState<SkillEvidence["source_kind"]>("project");
+  const [evSourceId, setEvSourceId] = useState("");
+  const [evSummary, setEvSummary] = useState("");
+  const [asLevel, setAsLevel] = useState(3);
+  const [asConfidence, setAsConfidence] = useState<Assessment["confidence"]>("medium");
+  const [asRationale, setAsRationale] = useState("");
+  const [asEvidence, setAsEvidence] = useState<string[]>([]);
   const [gapProject, setGapProject] = useState<string>("");
   const [gapText, setGapText] = useState("");
   const [gapItem, setGapItem] = useState<string>("");
@@ -964,6 +1003,61 @@ export default function App() {
         reloadAll();
       },
     );
+
+  // E6 证据/评估明细：展开时惰性加载该技能的证据与评估历史。
+  const toggleSkillDetail = (skillId: string) => {
+    if (expandedSkill === skillId) {
+      setExpandedSkill(null);
+      return;
+    }
+    setExpandedSkill(skillId);
+    invoke<SkillEvidence[]>("list_skill_evidence", { workspaceId, skillId })
+      .then((r) => setSkillEvidenceMap((m) => ({ ...m, [skillId]: r })))
+      .catch(fail);
+    invoke<Assessment[]>("list_assessments", { workspaceId, skillId })
+      .then((r) => setSkillAssessments((m) => ({ ...m, [skillId]: r })))
+      .catch(fail);
+  };
+
+  const addEvidence = (skillId: string) =>
+    run(async () => {
+      const record = await invoke<SkillEvidence>("add_skill_evidence", {
+        workspaceId,
+        skillId,
+        kind: evKind,
+        sourceKind: evSourceKind,
+        sourceId: evSourceId.trim(),
+        summary: evSummary.trim() || null,
+      });
+      setNotice(`证据已录入：${record.kind}`);
+      setEvSourceId("");
+      setEvSummary("");
+    }, () => {
+      invoke<SkillEvidence[]>("list_skill_evidence", { workspaceId, skillId })
+        .then((r) => setSkillEvidenceMap((m) => ({ ...m, [skillId]: r })))
+        .catch(fail);
+    });
+
+  const createAssessment = (skillId: string) =>
+    run(async () => {
+      const assessment = await invoke<Assessment>("create_assessment", {
+        workspaceId,
+        skillId,
+        level: asLevel,
+        confidence: asConfidence,
+        rationale: asRationale.trim() || null,
+        evidenceIds: asEvidence,
+      });
+      setNotice(
+        `评估已确认：等级 ${assessment.level}（尺度 v${assessment.scale_version}，${assessment.evidence_ids.length} 条证据支撑）`,
+      );
+      setAsRationale("");
+      setAsEvidence([]);
+    }, () => {
+      invoke<Assessment[]>("list_assessments", { workspaceId, skillId })
+        .then((r) => setSkillAssessments((m) => ({ ...m, [skillId]: r })))
+        .catch(fail);
+    });
 
   const proposeGap = () =>
     run(() => {
@@ -1946,14 +2040,142 @@ export default function App() {
               {skills.length === 0 && <li>暂无技能。添加技能后再录入证据与评估。</li>}
               {skills.map((s) => (
                 <li key={s.id}>
-                  <strong>{s.name}</strong>（{s.category}，尺度 v{s.scale_version}）
+                  <strong>{s.name}</strong>（{s.category}，尺度 v{s.scale_version}）{" "}
+                  <button onClick={() => toggleSkillDetail(s.id)} disabled={busy}>
+                    {expandedSkill === s.id ? "收起" : "证据与评估"}
+                  </button>
+                  {expandedSkill === s.id && (
+                    <div>
+                      <h4>证据（评估必须引用至少一条）</h4>
+                      <ul>
+                        {(skillEvidenceMap[s.id] ?? []).length === 0 && (
+                          <li>暂无证据。</li>
+                        )}
+                        {(skillEvidenceMap[s.id] ?? []).map((e) => (
+                          <li key={e.id}>
+                            {e.kind} ← {e.source_kind}:{e.source_id}
+                            {e.summary !== null && `（${e.summary}）`}
+                          </li>
+                        ))}
+                      </ul>
+                      <select
+                        value={evKind}
+                        onChange={(e) => setEvKind(e.target.value as SkillEvidence["kind"])}
+                        disabled={busy}
+                      >
+                        <option value="implementation">实现</option>
+                        <option value="test_verification">测试验证</option>
+                        <option value="project_delivery">项目交付</option>
+                        <option value="tech_review">技术评审</option>
+                        <option value="concept_explanation">概念解释</option>
+                        <option value="practice">练习</option>
+                        <option value="experiment">实验</option>
+                        <option value="teaching_documentation">教学/文档</option>
+                      </select>
+                      <select
+                        value={evSourceKind}
+                        onChange={(e) =>
+                          setEvSourceKind(e.target.value as SkillEvidence["source_kind"])
+                        }
+                        disabled={busy}
+                      >
+                        <option value="project">项目</option>
+                        <option value="task">任务</option>
+                        <option value="artifact">产物</option>
+                        <option value="note">笔记</option>
+                        <option value="knowledge_ref">知识引用</option>
+                      </select>
+                      <input
+                        value={evSourceId}
+                        onChange={(e) => setEvSourceId(e.target.value)}
+                        placeholder="来源 id"
+                        disabled={busy}
+                      />
+                      <input
+                        value={evSummary}
+                        onChange={(e) => setEvSummary(e.target.value)}
+                        placeholder="说明（可选）"
+                        disabled={busy}
+                      />
+                      <button
+                        onClick={() => addEvidence(s.id)}
+                        disabled={busy || !evSourceId.trim()}
+                      >
+                        添加证据
+                      </button>
+                      <h4>评估（追加式，用户确认）</h4>
+                      {(skillAssessments[s.id] ?? []).length > 0 && (
+                        <ul>
+                          {(skillAssessments[s.id] ?? []).map((a) => (
+                            <li key={a.id}>
+                              等级 <strong>{a.level}</strong>（尺度 v{a.scale_version}，
+                              置信度 {a.confidence}，{a.evidence_ids.length} 条证据）
+                              {a.rationale !== null && `：${a.rationale}`}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      等级：
+                      <select
+                        value={asLevel}
+                        onChange={(e) => setAsLevel(Number(e.target.value))}
+                        disabled={busy}
+                      >
+                        {[0, 1, 2, 3, 4, 5].map((l) => (
+                          <option key={l} value={l}>
+                            {l}
+                          </option>
+                        ))}
+                      </select>
+                      置信度：
+                      <select
+                        value={asConfidence}
+                        onChange={(e) =>
+                          setAsConfidence(e.target.value as Assessment["confidence"])
+                        }
+                        disabled={busy}
+                      >
+                        <option value="low">低</option>
+                        <option value="medium">中</option>
+                        <option value="high">高</option>
+                      </select>
+                      <input
+                        value={asRationale}
+                        onChange={(e) => setAsRationale(e.target.value)}
+                        placeholder="评估说明（可选）"
+                        disabled={busy}
+                      />
+                      <div>
+                        证据勾选（至少一条）：
+                        {(skillEvidenceMap[s.id] ?? []).map((e) => (
+                          <label key={e.id} style={{ marginRight: 8 }}>
+                            <input
+                              type="checkbox"
+                              checked={asEvidence.includes(e.id)}
+                              onChange={(e2) =>
+                                setAsEvidence((ids) =>
+                                  e2.target.checked
+                                    ? [...ids, e.id]
+                                    : ids.filter((id) => id !== e.id),
+                                )
+                              }
+                              disabled={busy}
+                            />
+                            {e.kind}:{e.source_id}
+                          </label>
+                        ))}
+                      </div>
+                      <button
+                        onClick={() => createAssessment(s.id)}
+                        disabled={busy || asEvidence.length === 0}
+                      >
+                        创建评估
+                      </button>
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>
-            <p className="muted">
-              证据与评估通过命令桥录入（create_skill_evidence / create_assessment）；
-              UI 逐步完善中。
-            </p>
           </section>
 
           {/* Project learning gaps (E6-02) */}
