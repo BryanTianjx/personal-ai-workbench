@@ -1,0 +1,94 @@
+/*
+ * Design tokens — GUI Design Specification R1 (docs/07-ui-design/01-design-system.md).
+ * Single source of truth for colors, typography, spacing, radius and elevation.
+ * Feature stylesheets must reference these variables, never literal values.
+ */
+:root {
+  /* Color — brand */
+  --color-primary-600: #2563eb;
+  --color-primary-700: #1d4ed8;
+  --color-primary-050: #eff6ff;
+
+  /* Color — surfaces */
+  --color-app-bg: #f5f7fa;
+  --color-surface: #ffffff;
+  --color-surface-subtle: #f8fafc;
+  --color-surface-hover: #f1f5f9;
+
+  /* Color — text */
+  --color-text-primary: #172033;
+  --color-text-secondary: #64748b;
+  --color-text-muted: #94a3b8;
+
+  /* Color — borders */
+  --color-border: #e2e8f0;
+  --color-border-strong: #cbd5e1;
+
+  /* Color — status */
+  --color-success: #15803d;
+  --color-success-bg: #ecfdf5;
+  --color-warning: #d97706;
+  --color-warning-bg: #fffbeb;
+  --color-danger: #dc2626;
+  --color-danger-bg: #fef2f2;
+  --color-info: #0369a1;
+  --color-info-bg: #f0f9ff;
+
+  /* Focus ring */
+  --focus-ring: #93c5fd;
+
+  /* Typography */
+  --font-stack: "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+  --type-page-title-size: 24px;
+  --type-page-title-lh: 32px;
+  --type-section-title-size: 16px;
+  --type-section-title-lh: 24px;
+  --type-body-size: 14px;
+  --type-body-lh: 20px;
+  --type-body-small-size: 13px;
+  --type-body-small-lh: 18px;
+  --type-caption-size: 12px;
+  --type-caption-lh: 16px;
+  --type-overline-size: 11px;
+  --type-overline-lh: 16px;
+  --type-metric-size: 28px;
+  --type-metric-lh: 34px;
+
+  /* Spacing (base unit 4px) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* Control heights */
+  --control-height-compact: 28px;
+  --control-height-default: 36px;
+  --control-height-large: 40px;
+
+  /* Radius */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-pill: 999px;
+
+  /* Elevation */
+  --border-default: 1px solid var(--color-border);
+  --shadow-popover: 0 8px 24px rgba(15, 23, 42, 0.1);
+  --shadow-dialog: 0 16px 48px rgba(15, 23, 42, 0.16);
+
+  /* Motion */
+  --duration-fast: 140ms;
+  --duration-overlay: 180ms;
+
+  /* Layout grid */
+  --header-height: 56px;
+  --sidebar-width: 240px;
+  --sidebar-width-collapsed: 64px;
+  --content-max-width: 1440px;
+  --page-padding: var(--space-6);
+}

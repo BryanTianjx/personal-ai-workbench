@@ -1,0 +1,357 @@
+/* Shared data-display components: tables, kanban, metrics, toolbars. */
+
+/* ---------- Data table (semantic table markup for accessibility) ---------- */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--type-body-small-size);
+}
+.data-table th {
+  text-align: left;
+  font-size: var(--type-overline-size);
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  color: var(--color-text-muted);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: var(--border-default);
+  white-space: nowrap;
+}
+.data-table td {
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--color-surface-hover);
+  vertical-align: middle;
+  min-width: 0;
+}
+.data-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+.data-table tbody tr:hover {
+  background: var(--color-surface-hover);
+}
+/* Row hover must not imply selection (01-design-system.md §7). */
+.data-table tbody tr.selected {
+  background: var(--color-primary-050);
+}
+.data-table .cell-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.data-table .row-link {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  text-align: left;
+  font-size: var(--type-body-small-size);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.data-table .row-link:hover {
+  color: var(--color-primary-600);
+  text-decoration: underline;
+}
+.data-table .cell-muted {
+  color: var(--color-text-muted);
+  font-size: var(--type-caption-size);
+  white-space: nowrap;
+}
+.data-table .cell-badge {
+  white-space: nowrap;
+}
+
+/* ---------- Kanban board: bounded horizontal scroll region (02-application-shell.md §3) ---------- */
+.kanban-scroll {
+  overflow-x: auto;
+  padding-bottom: var(--space-2);
+}
+.kanban-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(232px, 1fr));
+  gap: var(--space-3);
+  align-items: start;
+  min-width: 940px;
+}
+.kanban-column {
+  background: var(--color-surface-subtle);
+  border: var(--border-default);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  min-height: 180px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.kanban-column-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 2px var(--space-2);
+  font-size: var(--type-body-small-size);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+.kanban-column-head .column-count {
+  font-size: var(--type-caption-size);
+  font-weight: 500;
+  color: var(--color-text-muted);
+  background: var(--color-surface-hover);
+  border-radius: var(--radius-pill);
+  padding: 1px 8px;
+}
+.kanban-column-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  flex: 1;
+}
+.kanban-card {
+  background: var(--color-surface);
+  border: var(--border-default);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.kanban-card-title {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+  font-weight: 500;
+  font-size: var(--type-body-small-size);
+  color: var(--color-text-primary);
+  line-height: 1.5;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.kanban-card-title:hover {
+  color: var(--color-primary-600);
+}
+.kanban-card-meta {
+  font-size: var(--type-caption-size);
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kanban-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.kanban-card-foot .select {
+  height: var(--control-height-compact);
+  font-size: var(--type-caption-size);
+  width: auto;
+  flex: none;
+  max-width: 118px;
+}
+
+/* ---------- Dashboard metrics ---------- */
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+.metric-card {
+  background: var(--color-surface);
+  border: var(--border-default);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  text-align: left;
+  transition: border-color var(--duration-fast) ease;
+}
+button.metric-card:hover {
+  border-color: var(--color-primary-600);
+}
+.metric-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  color: var(--color-text-secondary);
+  font-size: var(--type-caption-size);
+  font-weight: 500;
+}
+.metric-top .metric-icon {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-hover);
+  color: var(--color-text-secondary);
+  flex: none;
+}
+.metric-value {
+  font-size: var(--type-metric-size);
+  line-height: var(--type-metric-lh);
+  font-weight: 600;
+  letter-spacing: -0.5px;
+  color: var(--color-text-primary);
+}
+.metric-note {
+  font-size: var(--type-caption-size);
+  color: var(--color-text-muted);
+}
+
+/* ---------- Toolbar: filter row + view toggle ---------- */
+.filter-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.filter {
+  border: 0;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: var(--type-body-small-size);
+  padding: 6px var(--space-3);
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+}
+.filter:hover {
+  background: var(--color-surface-hover);
+}
+.filter.active {
+  background: var(--color-primary-050);
+  color: var(--color-primary-700);
+}
+.view-toggle {
+  display: flex;
+  border: var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  padding: 3px;
+  gap: 2px;
+}
+.view-toggle button {
+  border: 0;
+  background: transparent;
+  color: var(--color-text-secondary);
+  padding: 5px var(--space-3);
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--type-body-small-size);
+  font-weight: 500;
+}
+.view-toggle button.selected {
+  background: var(--color-primary-050);
+  color: var(--color-primary-700);
+}
+.search-field {
+  height: var(--control-height-default);
+  background: var(--color-surface);
+  border: var(--border-default);
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
+  color: var(--color-text-muted);
+  min-width: 200px;
+  flex: 1;
+  max-width: 320px;
+}
+.search-field input {
+  border: 0;
+  outline: 0;
+  min-width: 0;
+  width: 100%;
+  font-size: var(--type-body-small-size);
+  background: transparent;
+  color: var(--color-text-primary);
+}
+.search-field input::placeholder {
+  color: var(--color-text-muted);
+}
+
+/* ---------- Dashboard grids ---------- */
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: 1.35fr 1fr;
+  gap: var(--space-4);
+  align-items: start;
+}
+.dashboard-grid .stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+/* ---------- Compact rows ---------- */
+.list-rows {
+  display: flex;
+  flex-direction: column;
+}
+.list-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--color-surface-hover);
+  min-height: 52px;
+}
+.list-row:last-child {
+  border-bottom: 0;
+}
+.list-row .row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.list-row .row-title {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  font-size: var(--type-body-small-size);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.list-row .row-title:hover {
+  color: var(--color-primary-600);
+}
+.list-row .row-sub {
+  font-size: var(--type-caption-size);
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.list-row .row-side {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
+}
+
+@media (max-width: 1120px) {
+  .metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+}
