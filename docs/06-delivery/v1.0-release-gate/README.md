@@ -24,7 +24,10 @@
 - **环境：** Windows，toolchain 1.98.1，node/pnpm per repo lockfiles，main 分支。
 - **过程：** `pnpm tauri build`（beforeBuildCommand: `pnpm build` → tauri release 编译 → NSIS + MSI 打包）。
 - **发现缺陷 R1-a：** `build.frontendDist` 为 `"../../dist"`——相对 tauri.conf.json 所在目录（`src-tauri/crates/paw-desktop/`）解析为 `src-tauri/dist`（不存在），而 vite 实际输出在仓库根 `dist/`。dev 模式走 devUrl 故从未暴露。修复为 `"../../../dist"`。
-- **结果：** 修复后构建待记录（本节随构建完成更新：安装包路径、大小、SHA-256）。
+- **结果：✅ 构建成功（2026-11-15，commit 284845e）。** 产物：
+  - NSIS：`src-tauri/target/release/bundle/nsis/Personal AI Workbench_0.1.0_x64-setup.exe`（2.88 MiB，SHA-256 `cd4eb8fc17dbccb50b43dd9b4663fe56b32d0bbb522d705505bd1aac1134449b`）
+  - MSI：`src-tauri/target/release/bundle/msi/Personal AI Workbench_0.1.0_x64_en-US.msi`（4.09 MiB，SHA-256 `619f110af0f164394104d87ab2804de7c1900b1a82f889254d3338a3d5196b31`）
+  - 附带产物：release 可执行文件 `target/release/paw-desktop.exe`。R2–R7 演练以这两个安装包为输入。
 
 ## 升级/恢复演练注意
 
