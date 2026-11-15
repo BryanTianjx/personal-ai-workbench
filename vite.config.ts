@@ -10,6 +10,12 @@ export default defineConfig({
     port: 1420,
     strictPort: true,
     host: false,
+    // Cargo writes build artifacts into src-tauri/target while `tauri dev` runs;
+    // watching those files crashes the watcher on Windows (EBUSY on freshly
+    // written .exe files), which kills the beforeDevCommand.
+    watch: {
+      ignored: ["**/src-tauri/**"],
+    },
   },
   build: {
     target: "chrome120",
