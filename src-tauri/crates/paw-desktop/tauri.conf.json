@@ -37,6 +37,9 @@
     },
     "icon": ["icons/icon.ico"],
     "windows": {
+      "nsis": {
+        "template": "../../nsis/installer.nsi"
+      },
       "wix": {
         "language": "en-US"
       }

@@ -122,6 +122,28 @@ Do not report the overall PRD as complete. Alpha 0.1 should be described as a Wi
 | REL-005 | P1 | Live quarantine re-drive and cancellation scenarios were not observed in the E3 windowed session | Manual or controlled integration scenario evidence |
 | REL-006 | P1 | Backup/restore release-level operator workflow needs end-to-end confirmation | Backup, destructive test copy restore, integrity checks and user-visible result |
 | REL-007 | P2 | macOS compatibility is not part of Alpha 0.1 | Explicitly deferred to a later platform milestone |
+| REL-008 | P2 | NSIS installer refuses to start with `Invalid Drive:` when the remembered install location sits on a drive that no longer exists. `Function RestorePreviousInstallLocation` in the generated `installer.nsi` copies the `HKCU\Software\<manufacturer>\<product>` default value straight into `$INSTDIR` (`StrCpy $INSTDIR $4`) with no drive or directory check, and `.onInit` calls it on every run whenever `$INSTDIR` still holds the placeholder. See REL-004. | The installer validates the remembered path before use — drive present and the path parses — and otherwise falls back to the default `%LOCALAPPDATA%\<product>` location. Evidence: a successful install on a machine whose previous install location was deleted or whose drive letter changed, with the stale uninstall entry cleaned up rather than left pointing at a missing `uninstall.exe`. |
+
+REL-008 was observed on 2026-11-16 while reinstalling on a workbench whose previous
+install lived at `E:\Personal AI Workbench`: the drive no longer existed, the registry
+still advertised that path, and Setup failed at `.onInit` before showing the directory
+page. The workaround is to delete the stale
+`HKCU\Software\<manufacturer>\<product>` default value and the orphaned
+`HKCU\...\Uninstall\<product>` key. This is a packaging robustness defect, not a
+security finding: the source review that produced this baseline does not cover the
+generated installer, so it was not reachable by that scope.
+
+Remediation (2026-11-16, not yet closure-evidenced): the bundler now uses a
+custom template at `src-tauri/nsis/installer.nsi` (wired via
+`bundle.windows.nsis.template` in `tauri.conf.json`). It adds an existence
+guard to `Function RestorePreviousInstallLocation` — the remembered path is
+adopted only when `GetDriveType` on its root is not `DRIVE_NO_ROOT_DIR` and the
+directory still resolves — and treats a stale uninstall registration (drive
+gone / directory deleted) as a fresh install in `PageReinstall` instead of
+offering an uninstaller that cannot run. NSIS syntax verified with
+`makensis 3.10` on the patched template; **closure requires a Windows
+`tauri build` and an install on a machine whose previous location was deleted
+or whose drive letter changed** — the acceptance evidence in this row.
 
 ### Scope boundary
 Provider-side idempotency keys and real external outcome reconciliation remain E5 / Alpha 0.2 concerns per ADR-022. Do not expand Alpha 0.1 into real external provider orchestration unless a separately approved scope change is recorded. Background purge remains excluded; purge is explicit and gated.

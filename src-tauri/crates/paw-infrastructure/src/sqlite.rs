@@ -47,6 +47,24 @@ pub fn open(path: &std::path::Path) -> Result<Connection, Error> {
 /// an already-applied migration is a hard integrity error; the database is not
 /// silently continued. See ADR-006 and
 /// `E1-sqlite-schema-migrations-workspace-isolation.md` §2.
+/// Migration files are `NNNN_<name>.sql`.
+///
+/// The migrations directory can be selected from the environment
+/// (`PAW_MIGRATIONS_DIR`), so `migrate` must not `execute_batch` whatever
+/// `*.sql` happens to sit there: a stray or dropped file would become schema
+/// SQL. Only names carrying an explicit numeric version are migrations; every
+/// other `.sql` is ignored rather than executed.
+fn migration_version(path: &std::path::Path) -> Option<i64> {
+    let name = path.file_name()?.to_str()?;
+    let stem = name.strip_suffix(".sql")?;
+    let (digits, rest) = stem.split_at(stem.find('_')?);
+    // At least four digits (`0001`) and a non-empty name after the separator.
+    if digits.len() < 4 || rest.len() < 2 || !digits.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    digits.parse::<i64>().ok()
+}
+
 pub fn migrate(conn: &mut Connection, migrations_dir: &std::path::Path) -> Result<(), Error> {
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -60,18 +78,9 @@ pub fn migrate(conn: &mut Connection, migrations_dir: &std::path::Path) -> Resul
     let mut files: Vec<std::path::PathBuf> = fs::read_dir(migrations_dir)
         .map_err(|e| Error::Io { source: e })?
         .filter_map(|entry| entry.ok().map(|entry| entry.path()))
-        .filter(|p| p.extension().map(|e| e == "sql").unwrap_or(false))
+        .filter(|p| migration_version(p).is_some())
         .collect();
-    files.sort_by_key(|p| {
-        let digits: String = p
-            .file_name()
-            .map(|n| n.to_string_lossy())
-            .unwrap_or_default()
-            .chars()
-            .take_while(|c| c.is_ascii_digit())
-            .collect();
-        digits.parse::<i64>().unwrap_or(i64::MAX)
-    });
+    files.sort_by_key(|p| migration_version(p).unwrap_or(i64::MAX));
 
     let applied: std::collections::HashMap<i64, (String, String, i64)> = {
         let mut stmt =
@@ -98,8 +107,11 @@ pub fn migrate(conn: &mut Connection, migrations_dir: &std::path::Path) -> Resul
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default();
-        let digits: String = name.chars().take_while(|c| c.is_ascii_digit()).collect();
-        let version: i64 = digits.parse().unwrap_or(i64::MAX);
+        let Some(version) = migration_version(path) else {
+            // The collection filter already excluded non-migration names;
+            // this only guards a future edit that loosens it.
+            continue;
+        };
 
         let sql = fs::read_to_string(path).map_err(|e| Error::Io { source: e })?;
         // The checksum is computed over the line-ending-normalized content:
@@ -235,6 +247,79 @@ mod tests {
         // cleanup: Windows locks files held open by this process.
         drop(conn);
         fs::remove_dir_all(db.parent().unwrap()).unwrap();
+    }
+
+    #[test]
+    fn migrate_ignores_sql_files_that_are_not_migrations() {
+        // The directory can come from PAW_MIGRATIONS_DIR, so only names that
+        // carry an explicit numeric version may be executed. A stray .sql in
+        // that directory must not become schema SQL.
+        assert_eq!(
+            migration_version(std::path::Path::new("0001_probe.sql")),
+            Some(1)
+        );
+        assert_eq!(
+            migration_version(std::path::Path::new("0013_platform.sql")),
+            Some(13)
+        );
+        for not_a_migration in [
+            "stray.sql",
+            "0001.sql",
+            "12_short.sql",
+            "abcd_name.sql",
+            "0001_probe.txt",
+        ] {
+            assert_eq!(
+                migration_version(std::path::Path::new(not_a_migration)),
+                None,
+                "expected {not_a_migration:?} to be ignored"
+            );
+        }
+
+        let root = std::env::temp_dir().join(format!("paw-mig-{}", uuid::Uuid::now_v7()));
+        let dir = root.join("migrations");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(
+            dir.join("0001_probe.sql"),
+            "CREATE TABLE probe_applied (x INTEGER);",
+        )
+        .unwrap();
+        fs::write(
+            dir.join("stray.sql"),
+            "CREATE TABLE stray_executed (x INTEGER);",
+        )
+        .unwrap();
+        fs::write(
+            dir.join("9999_no_version.sql.bak"),
+            "CREATE TABLE bak_executed (x INTEGER);",
+        )
+        .unwrap();
+
+        let db = root.join("probe.sqlite");
+        let mut conn = open(&db).unwrap();
+        migrate(&mut conn, &dir).unwrap();
+
+        let tables: String = conn
+            .query_row(
+                "SELECT group_concat(name) FROM sqlite_master WHERE type = 'table'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(tables.contains("probe_applied"), "migration should apply");
+        assert!(
+            !tables.contains("stray_executed"),
+            "stray .sql must not run"
+        );
+        assert!(!tables.contains("bak_executed"), "non-.sql must not run");
+
+        let ledger: i64 = conn
+            .query_row("SELECT COUNT(*) FROM schema_migrations", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(ledger, 1, "only the real migration is recorded");
+
+        drop(conn);
+        fs::remove_dir_all(&root).unwrap();
     }
 
     #[test]

@@ -45,10 +45,31 @@ pub struct AuditEvent {
     pub correlation_id: String,
 }
 
+/// Why an audit write did not land.
+///
+/// Deliberately opaque: it carries no row contents and no driver message, so
+/// surfacing it to a caller or a log cannot leak the material being audited.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuditError {
+    /// The sink could not persist the row (connection, constraint, io).
+    WriteFailed,
+}
+
 /// Audit sink port. Recording is a hook, not a transaction participant: an
 /// audit write failure must not roll back or fail the business action it
 /// observes (the SQLite adapter persists best-effort with the connection
 /// policy; audit integrity is revisited with the E3 audit scope).
 pub trait AuditSink {
+    /// Fire-and-forget hook. Use where the action must proceed regardless.
     fn record(&self, event: &AuditEvent);
+
+    /// Record and report whether the row landed.
+    ///
+    /// Governance call sites — approval decisions, authority changes — use
+    /// this so a lost audit row is at least observable; a sink that cannot
+    /// see its own write failure keeps the default (always `Ok`).
+    fn try_record(&self, event: &AuditEvent) -> Result<(), AuditError> {
+        self.record(event);
+        Ok(())
+    }
 }

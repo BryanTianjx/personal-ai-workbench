@@ -599,8 +599,12 @@ impl Approval {
 
     /// Time-derived status: an `Active` approval past its window reads as
     /// `Expired` (consumption and validation refuse it).
+    /// A non-positive `now_ms` means the clock could not be read: the desktop
+    /// layer falls back to 0 when its clock query fails. That must not extend
+    /// an approval, because `0 >= expires_at_ms` is false and an unreadable
+    /// clock would leave every approval `Active` forever. Fail closed instead.
     pub fn effective_status(&self, now_ms: i64) -> ApprovalStatus {
-        if self.status == ApprovalStatus::Active && now_ms >= self.expires_at_ms {
+        if self.status == ApprovalStatus::Active && (now_ms <= 0 || now_ms >= self.expires_at_ms) {
             ApprovalStatus::Expired
         } else {
             self.status
@@ -905,6 +909,14 @@ mod tests {
         .expect("valid approval");
         assert_eq!(approval.effective_status(400), ApprovalStatus::Active);
         assert_eq!(approval.effective_status(500), ApprovalStatus::Expired);
+        // A failed clock read reaches the domain as 0. It must not look like
+        // "before the window", which would keep the approval usable forever.
+        assert_eq!(approval.effective_status(0), ApprovalStatus::Expired);
+        assert_eq!(approval.effective_status(-1), ApprovalStatus::Expired);
+        assert_eq!(
+            approval.clone().consume(0),
+            Err(GovernanceError::ApprovalExpired)
+        );
         approval.consume(400).expect("within window");
         assert_eq!(approval.status, ApprovalStatus::Consumed);
         assert_eq!(

@@ -966,10 +966,19 @@ impl WorkManagementApi {
             "operation",
             Some(operation_id),
         )?;
+        // The ledger must not present caller text as a verified attestation.
+        // Record who actually resolved it (server-side actor and correlation)
+        // and label the caller's text as client-supplied, capped so a caller
+        // cannot flood the row.
+        let client_note: String = note.chars().take(200).collect();
+        let resolution_note = format!(
+            "reconciled by {} (corr {}); client-supplied note: {}",
+            ctx.actor_id, ctx.correlation_id, client_note
+        );
         let row = paw_infrastructure::operations::resume_after_reconciliation(
             &self.coordination,
             operation_id,
-            note,
+            &resolution_note,
         )
         .map_err(map_operation_error)?;
         self.audit
@@ -1290,15 +1299,26 @@ impl WorkManagementApi {
 
     /// Open an attachment with the OS default application (E2-04 UI fix:
     /// WebView2 swallows programmatic `<a download>` clicks, so bytes are
-    /// exported to a temp file and handed to the shell instead). The copy
-    /// lives under the user's temp directory; removing it is left to OS
-    /// temp cleanup and nothing is executed.
+    /// exported to a temp file and handed to the shell instead).
+    ///
+    /// Only allowlisted inert types are exported (see
+    /// `attachment::OPENABLE_EXTENSIONS`); the exported name is rebuilt from a
+    /// sanitised stem plus that extension, so no stored name can reach the
+    /// `cmd.exe` command line with a metacharacter in it. The copy lives under
+    /// the user's temp directory; removing it is left to OS temp cleanup.
     pub fn open_attachment_externally(
         &self,
         workspace_id: &WorkspaceId,
         attachment_id: &str,
     ) -> Result<String, WorkManagementError> {
         let (attachment, bytes) = self.read_attachment(workspace_id, attachment_id)?;
+        // The exported name is rebuilt here from an allowlisted extension and
+        // a sanitised stem: it can never carry a path separator, `:`, or a
+        // Windows shell metacharacter, and a type the OS handler would execute
+        // (`.bat`, `.ps1`, `.lnk`, ...) is refused instead of being written
+        // and launched. Governing rule: never pass a stored name to a shell.
+        let export_name =
+            use_cases::attachment::export_file_name(&attachment.id, &attachment.file_name)?;
         let temp_dir = std::env::temp_dir().join("paw-attachments");
         std::fs::create_dir_all(&temp_dir).map_err(|e| {
             WorkManagementError::Repository(
@@ -1307,10 +1327,7 @@ impl WorkManagementApi {
                 ),
             )
         })?;
-        // The attachment id prefixes the name: unique per attachment and
-        // free of path components (the stored file name was validated at
-        // add time).
-        let path = temp_dir.join(format!("{}_{}", attachment.id, attachment.file_name));
+        let path = temp_dir.join(export_name);
         std::fs::write(&path, &bytes).map_err(|e| {
             WorkManagementError::Repository(
                 paw_application::ports::workspace_repository::WorkspaceRepositoryError::Invariant(
@@ -1318,10 +1335,28 @@ impl WorkManagementApi {
                 ),
             )
         })?;
+        // Defense in depth: `cmd.exe` re-parses the assembled command line, so
+        // a temp directory that itself holds a metacharacter (a user name like
+        // `A&B` makes %TEMP% contain `&`) would reopen the injection the
+        // exported name just closed. Refuse to launch rather than hand cmd a
+        // line it would split.
+        let rendered = path.to_string_lossy();
+        if let Some(bad) = rendered.chars().find(|c| {
+            matches!(
+                c,
+                '&' | '|' | '^' | '(' | ')' | '<' | '>' | ';' | '%' | '"' | '!'
+            )
+        }) {
+            return Err(WorkManagementError::Repository(
+                paw_application::ports::workspace_repository::WorkspaceRepositoryError::Invariant(
+                    format!("refusing to open: temp path contains a shell metacharacter {bad:?}"),
+                ),
+            ));
+        }
         // `start "" "path"` opens with the default application; the empty
         // title argument guards paths with spaces.
         std::process::Command::new("cmd")
-            .args(["/C", "start", "", &path.to_string_lossy()])
+            .args(["/C", "start", "", rendered.as_ref()])
             .creation_flags(0x0800_0000) // CREATE_NO_WINDOW: no console flash
             .spawn()
             .map_err(|e| {
@@ -1331,7 +1366,7 @@ impl WorkManagementApi {
                     ),
                 )
             })?;
-        Ok(path.to_string_lossy().into_owned())
+        Ok(rendered.into_owned())
     }
 
     pub fn remove_attachment(
@@ -2451,6 +2486,15 @@ impl WorkManagementApi {
         self.agent_registrations
             .update_registration_status(&registration)
             .map_err(CommandError::from)?;
+        // Activation/suspension changes what an agent may do; record it.
+        self.record_governance_audit(
+            workspace_id,
+            &ctx,
+            "agent_registration.status",
+            "agent_registration",
+            Some(registration_id),
+            paw_application::ports::audit::AuditOutcome::Allowed,
+        );
         Ok(registration)
     }
 
@@ -2570,6 +2614,38 @@ impl WorkManagementApi {
         })
     }
 
+    /// Record one governance action (approval decisions, authority changes).
+    ///
+    /// Uses the reportable form of the audit port so a lost row surfaces on
+    /// stderr instead of vanishing — the desktop shell has no logger yet, and
+    /// silence is what made the audit gaps invisible. The business action
+    /// still proceeds: audit is a hook, not a transaction participant.
+    fn record_governance_audit(
+        &self,
+        workspace_id: &WorkspaceId,
+        ctx: &ExecutionContext,
+        action: &'static str,
+        resource_type: &'static str,
+        resource_id: Option<&str>,
+        outcome: paw_application::ports::audit::AuditOutcome,
+    ) {
+        let event = paw_application::ports::audit::AuditEvent {
+            workspace_id: Some(workspace_id.clone()),
+            actor_id: ctx.actor_id.clone(),
+            action,
+            resource_type,
+            resource_id: resource_id.map(|id| id.to_string()),
+            outcome,
+            correlation_id: ctx.correlation_id.clone(),
+        };
+        if self.audit.try_record(&event).is_err() {
+            eprintln!(
+                "audit write failed: action={action} resource={resource_type} outcome={}",
+                outcome.as_str()
+            );
+        }
+    }
+
     /// Human decision on a pending approval (approve runs the parked
     /// execution; deny revokes the approval and cancels).
     pub fn decide_approval(
@@ -2601,16 +2677,23 @@ impl WorkManagementApi {
             .coordinator()
             .decide_approval(workspace_id, &id, decision, self.now_ms())
             .map_err(CommandError::from)?;
-        self.audit
-            .record(&paw_application::ports::audit::AuditEvent {
-                workspace_id: Some(workspace_id.clone()),
-                actor_id: ctx.actor_id.clone(),
-                action: "approval.decide",
-                resource_type: "agent_execution",
-                resource_id: Some(execution_id.to_string()),
-                outcome: paw_application::ports::audit::AuditOutcome::Allowed,
-                correlation_id: ctx.correlation_id.clone(),
-            });
+        // The ledger must state what actually happened: a human denial, or an
+        // approval that was no longer consumable (outcome `None`), is not an
+        // allowed action. Recording `Allowed` unconditionally made the audit
+        // trail contradict the decision it documents.
+        let audit_outcome = if approve && outcome.is_some() {
+            paw_application::ports::audit::AuditOutcome::Allowed
+        } else {
+            paw_application::ports::audit::AuditOutcome::Denied
+        };
+        self.record_governance_audit(
+            workspace_id,
+            &ctx,
+            "approval.decide",
+            "agent_execution",
+            Some(execution_id),
+            audit_outcome,
+        );
         Ok(outcome.map(AgentRunOutcomeDto::from))
     }
 
@@ -2645,6 +2728,16 @@ impl WorkManagementApi {
         self.approvals
             .update_approval(&approval)
             .map_err(CommandError::from)?;
+        // Revocation is an authority change; leaving it unrecorded was one of
+        // the governance gaps (the approval simply disappeared from the trail).
+        self.record_governance_audit(
+            workspace_id,
+            &ctx,
+            "approval.revoke",
+            "approval",
+            Some(approval_id),
+            paw_application::ports::audit::AuditOutcome::Allowed,
+        );
         Ok(())
     }
 
@@ -2674,9 +2767,19 @@ impl WorkManagementApi {
         } else {
             paw_application::use_cases::agent_invocation::ReconcileResolution::Fail
         };
-        self.coordinator()
+        let reconciled = self
+            .coordinator()
             .reconcile(workspace_id, &id, resolution, &ctx)
-            .map_err(CommandError::from)
+            .map_err(CommandError::from)?;
+        self.record_governance_audit(
+            workspace_id,
+            &ctx,
+            "agent_execution.reconcile",
+            "agent_execution",
+            Some(execution_id),
+            paw_application::ports::audit::AuditOutcome::Allowed,
+        );
+        Ok(reconciled)
     }
 
     pub fn list_agent_executions(
@@ -2734,6 +2837,16 @@ impl WorkManagementApi {
         self.agent_grants
             .insert_grant(&grant, ctx.actor_id.as_str())
             .map_err(CommandError::from)?;
+        // Granting authority is the highest-consequence governance action;
+        // the ledger previously had no row for it at all.
+        self.record_governance_audit(
+            workspace_id,
+            &ctx,
+            "agent_grant.create",
+            "agent_grant",
+            Some(&grant.id),
+            paw_application::ports::audit::AuditOutcome::Allowed,
+        );
         Ok(grant.id)
     }
 
@@ -2756,7 +2869,16 @@ impl WorkManagementApi {
         )?;
         self.agent_grants
             .delete_grant(grant_id, workspace_id)
-            .map_err(CommandError::from)
+            .map_err(CommandError::from)?;
+        self.record_governance_audit(
+            workspace_id,
+            &ctx,
+            "agent_grant.revoke",
+            "agent_grant",
+            Some(grant_id),
+            paw_application::ports::audit::AuditOutcome::Allowed,
+        );
+        Ok(())
     }
 
     pub fn list_agent_grants(

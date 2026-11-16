@@ -13,7 +13,7 @@
 
 use rusqlite::{Connection, params};
 
-use paw_application::ports::audit::{AuditEvent, AuditSink};
+use paw_application::ports::audit::{AuditError, AuditEvent, AuditSink};
 use paw_application::ports::authorization::{
     AuthorizationError, Authorizer, ExecutionContext, GrantStore, ProtectedAction,
 };
@@ -39,31 +39,41 @@ impl SqliteAuditSink {
     }
 }
 
+impl SqliteAuditSink {
+    /// Persist one audit row. Returns the driver error so the caller decides
+    /// whether a lost row is merely best-effort (`record`) or reportable
+    /// (`try_record`).
+    fn persist(&self, event: &AuditEvent) -> Result<(), rusqlite::Error> {
+        self.conn.execute(
+            // `created_at` is computed by the database in this same statement.
+            // Reading the clock first made a failed read write `0` — an audit
+            // row stamped 1970 is worse evidence than a visible write error.
+            "INSERT INTO audit_events (id, workspace_id, actor_id, action, resource_type, \
+             resource_id, outcome, correlation_id, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, CAST(strftime('%s','now') AS INTEGER) * 1000)",
+            params![
+                uuid::Uuid::now_v7().to_string(),
+                event.workspace_id.as_ref().map(|w| w.as_str().to_string()),
+                event.actor_id,
+                event.action,
+                event.resource_type,
+                event.resource_id,
+                event.outcome.as_str(),
+                event.correlation_id,
+            ],
+        )?;
+        Ok(())
+    }
+}
+
 impl AuditSink for SqliteAuditSink {
     fn record(&self, event: &AuditEvent) {
-        let result = (|| -> Result<(), rusqlite::Error> {
-            self.conn.execute(
-                "INSERT INTO audit_events (id, workspace_id, actor_id, action, resource_type, \
-                 resource_id, outcome, correlation_id, created_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-                params![
-                    uuid::Uuid::now_v7().to_string(),
-                    event.workspace_id.as_ref().map(|w| w.as_str().to_string()),
-                    event.actor_id,
-                    event.action,
-                    event.resource_type,
-                    event.resource_id,
-                    event.outcome.as_str(),
-                    event.correlation_id,
-                    sqlite::now_ms().unwrap_or_default(),
-                ],
-            )?;
-            Ok(())
-        })();
         // Best-effort per the port contract; never propagate into the flow.
-        if let Err(_e) = result {
-            // Deliberately swallowed: audit is a hook, not a gate.
-        }
+        let _ = self.persist(event);
+    }
+
+    fn try_record(&self, event: &AuditEvent) -> Result<(), AuditError> {
+        self.persist(event).map_err(|_| AuditError::WriteFailed)
     }
 }
 

@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use paw_application::WorkspaceId;
-use paw_application::ports::audit::AuditSink as _;
+use paw_application::ports::audit::{AuditError, AuditEvent, AuditOutcome, AuditSink as _};
 use paw_application::ports::authorization::{AuthorizationError, ExecutionContext};
 use paw_application::ports::workspace_repository::WorkspaceRepository;
 use paw_application::use_cases::work_management::{self as use_cases, WorkManagementError};
@@ -203,5 +203,43 @@ fn failing_side_effect_audits_error_without_driver_text() {
 
     drop(audit_conn);
 
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn a_lost_audit_row_is_reportable_without_failing_the_action() {
+    let dir = temp_dir("audit-observable");
+    let db = dir.join("audit.sqlite");
+    drop(open_migrated(&db));
+
+    let audit = SqliteAuditSink::open(&db).unwrap();
+    let event = AuditEvent {
+        workspace_id: None,
+        actor_id: LOCAL_ACTOR_ID.to_string(),
+        action: "approval.decide",
+        resource_type: "agent_execution",
+        resource_id: Some("exec-1".to_string()),
+        outcome: AuditOutcome::Denied,
+        correlation_id: "corr-1".to_string(),
+    };
+
+    // A healthy sink persists and reports success.
+    audit
+        .try_record(&event)
+        .expect("healthy sink records the row");
+
+    // Remove the table so the sink cannot persist any more.
+    {
+        let conn = sqlite::open(&db).unwrap();
+        conn.execute("DROP TABLE audit_events", []).unwrap();
+    }
+
+    // A governance call site can now SEE that the row was lost ...
+    assert_eq!(audit.try_record(&event), Err(AuditError::WriteFailed));
+    // ... while the hook form stays non-fatal: audit is not a transaction
+    // participant, so the business action must not be aborted by it.
+    audit.record(&event);
+
+    drop(audit);
     std::fs::remove_dir_all(&dir).unwrap();
 }
